@@ -13,23 +13,29 @@ nonisolated struct AppSettings: Codable, Equatable, Sendable {
     var allowWrites: Bool
     var allowCommands: Bool
     var skillID: String
+    var mode: GatitaMode
+    var keepAwake: Bool
 
     init(projectRoot: String = "",
          model: String = "gatita-7.1-max",
          connectors: [String] = [],
          allowWrites: Bool = false,
          allowCommands: Bool = false,
-         skillID: String = "none") {
+         skillID: String = "none",
+         mode: GatitaMode = .code,
+         keepAwake: Bool = false) {
         self.projectRoot = projectRoot
         self.model = model
         self.connectors = connectors
         self.allowWrites = allowWrites
         self.allowCommands = allowCommands
         self.skillID = skillID
+        self.mode = mode
+        self.keepAwake = keepAwake
     }
 
     private enum CodingKeys: String, CodingKey {
-        case projectRoot, model, connectors, allowWrites, allowCommands, skillID
+        case projectRoot, model, connectors, allowWrites, allowCommands, skillID, mode, keepAwake
     }
 
     /// Missing keys take their defaults, so a settings file from an older version still loads.
@@ -42,6 +48,8 @@ nonisolated struct AppSettings: Codable, Equatable, Sendable {
         allowWrites = try values.decodeIfPresent(Bool.self, forKey: .allowWrites) ?? defaults.allowWrites
         allowCommands = try values.decodeIfPresent(Bool.self, forKey: .allowCommands) ?? defaults.allowCommands
         skillID = try values.decodeIfPresent(String.self, forKey: .skillID) ?? defaults.skillID
+        mode = try values.decodeIfPresent(GatitaMode.self, forKey: .mode) ?? defaults.mode
+        keepAwake = try values.decodeIfPresent(Bool.self, forKey: .keepAwake) ?? defaults.keepAwake
     }
 }
 

@@ -65,6 +65,14 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(migrated.connectors, ["web"])
     }
 
+    func testKeepAwakeIsOffByDefaultAndSaved() throws {
+        XCTAssertFalse(AppSettings().keepAwake)
+        var settings = AppSettings()
+        settings.keepAwake = true
+        let loaded = try JSONDecoder().decode(AppSettings.self, from: try JSONEncoder().encode(settings))
+        XCTAssertTrue(loaded.keepAwake)
+    }
+
     // MARK: - Chat history
 
     func testTitlesAndPreviewsComeFromTheMessages() {

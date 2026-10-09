@@ -21,19 +21,34 @@ nonisolated struct ProjectTools: Sendable {
     let logDirectory: URL?
     /// Connectors whose tools are on for this set of tools.
     let connectors: Set<String>
+    /// Whether this set of tools can start subagents. A subagent's own tools cannot.
+    let allowsSubagents: Bool
 
     init(root: URL?,
          allowWrites: Bool,
          allowCommands: Bool = false,
          commands: [[String]] = CommandPolicy.builtIn,
          logDirectory: URL? = nil,
-         connectors: Set<String> = []) {
+         connectors: Set<String> = [],
+         allowsSubagents: Bool = true) {
         self.root = root?.standardizedFileURL.resolvingSymlinksInPath()
         self.allowWrites = allowWrites
         self.allowCommands = allowCommands
         self.commands = commands
         self.logDirectory = logDirectory
         self.connectors = connectors
+        self.allowsSubagents = allowsSubagents
+    }
+
+    /// Background commands need a project folder and running commands turned on.
+    var allowsBackground: Bool {
+        root != nil && allowCommands
+    }
+
+    /// The same project for a subagent: read-only, with no commands, and no subagents of its own.
+    func readOnlyForSubagents() -> ProjectTools {
+        ProjectTools(root: root, allowWrites: false, allowCommands: false, commands: commands,
+                     logDirectory: logDirectory, connectors: connectors, allowsSubagents: false)
     }
 
     /// Reads GATITA_PROJECT_ROOT (set GATITA_ALLOW_WRITES=1 to allow edits).
@@ -83,9 +98,18 @@ nonisolated struct ProjectTools: Sendable {
             lines.append(contentsOf: Connectors.toolHelp(for: connector))
         }
         if hasFolder {
+            let allowedList = commands.map { $0.joined(separator: " ") }.joined(separator: ", ")
             if allowCommands {
-                let allowedList = commands.map { $0.joined(separator: " ") }.joined(separator: ", ")
                 lines.append("- run_command: {\"tool\": \"run_command\", \"command\": \"<command>\"} runs one allowed command in the project, with no network and writes only inside the project. Allowed: \(allowedList).")
+            }
+            if allowsBackground {
+                lines.append("- run_background: {\"tool\": \"run_background\", \"command\": \"<command>\"} starts one allowed command in the background. It keeps running after this reply. Allowed: \(allowedList).")
+                lines.append("- task_status: {\"tool\": \"task_status\", \"id\": \"<task id>\"} shows whether a background task is running, its exit code, and its latest output.")
+                lines.append("- task_stop: {\"tool\": \"task_stop\", \"id\": \"<task id>\"} stops a running background task.")
+            }
+            if allowsSubagents {
+                lines.append("- spawn_agent: {\"tool\": \"spawn_agent\", \"task\": \"<task>\"} starts a subagent on one task. It reads the project but cannot edit files or run commands. It runs alongside you, so you can start several and keep working.")
+                lines.append("- agent_result: {\"tool\": \"agent_result\", \"id\": \"<subagent id>\"} waits for a subagent and returns its answer.")
             }
             if allowWrites {
                 lines.append("- write_file: {\"tool\": \"write_file\", \"path\": \"<file>\", \"content\": \"<full file content>\"} creates or overwrites a file.")
@@ -299,6 +323,26 @@ nonisolated struct ProjectTools: Sendable {
         throw ToolError("git tools are only available on the Mac host")
     }
 #endif
+
+    /// The change a write or edit would make, for the diff in the chat. Nothing is written. Nil for other tools,
+    /// and for an edit that would fail.
+    func changePreview(name: String, arguments: String) -> FileChange? {
+        guard let args = try? JSONDecoder().decode([String: String].self, from: Data(arguments.utf8)),
+              let path = args["path"] else { return nil }
+        let current = (try? readText(path)) ?? ""
+        switch name {
+        case "write_file":
+            guard let content = args["content"] else { return nil }
+            return FileChange(path: path, lines: LineDiff.lines(from: current, to: content))
+        case "edit_file":
+            guard let oldText = args["old_text"], let newText = args["new_text"],
+                  current.components(separatedBy: oldText).count - 1 == 1 else { return nil }
+            let updated = current.replacingOccurrences(of: oldText, with: newText)
+            return FileChange(path: path, lines: LineDiff.lines(from: current, to: updated))
+        default:
+            return nil
+        }
+    }
 
     /// Runs one tool call. The web check needs the main actor, so it is awaited here; everything else runs inline.
     func execute(name: String, arguments: String) async -> String {

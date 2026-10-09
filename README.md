@@ -5,12 +5,15 @@ A SwiftUI chat app for Gatita's API, for Mac, iPhone, iPad, and Apple Vision Pro
 ## What it does
 
 - Chat with Gatita, with streamed replies and visible thinking.
-- Saved chats in the sidebar, titled by Gatita. Each prompt has a line on the right edge of the chat; click one to jump to that prompt.
+- Saved chats in the sidebar, titled by Gatita. A chat stays in the mode it was started in: Code chats appear only in Code, and Chat chats only in Chat. Each prompt has a line on the right edge of the chat; click one to jump to that prompt.
 - A badge in the toolbar and a menu bar item show finished replies and questions from Gatita.
 - On a Mac, Gatita can read and search a project folder, run allowed commands in a macOS sandbox, read GitHub pull requests and issues through `gh`, read your calendar events (read-only), and read public web pages.
 - On iPhone, iPad, and Vision Pro, Gatita answers questions and reads public web pages. Project files, commands, GitHub, and pull requests are only on the Mac.
-- Pick skills with `/`, project files with `@`, and plugins or connectors with `!`.
+- In Code mode, Gatita can run an allowed command in the background and check or stop it later, and start subagents that read the project and answer in parallel. The Activity panel on the right lists tool calls, background tasks, subagents, and changed files.\n- In Code mode, each file change shows as a diff in the chat, with the path, the added and removed line counts, and the changed lines in red and green.
+- Pick skills with `/`, project files with `@` (or the `@` button), and plugins or connectors with `!`. The paperclip opens a file picker, and the chosen files show as cards in the prompt box.
+- Attach a text file or a picture (PNG, JPEG, GIF, or WebP up to 4 MB) by dropping it on the prompt box or with the paperclip. Each shows as a card inside the box until you send. Pictures are sent to Gatita as images, which the API docs do not describe yet. On a Mac, a paste of 2,000 characters or more becomes a `Pasted text.md` attachment. Files over 2 MB, folders, and files that are not UTF-8 text are refused.
 - A Shop with free plugins, skills, and connectors bundled with the app.
+- On a Mac, turn on "Keep the Mac awake" in the menu bar or Settings to stop it sleeping on its own while Gatita is open. Closing the lid can still sleep it, and a sleeping Mac cannot run Gatita.
 - Logs, analytics, and failure reports stay on your device.
 
 ## Build
@@ -37,6 +40,7 @@ A plugin is a folder with a `plugin.json` in `~/Library/Application Support/Gati
 
 - The API key is never written to the repo or to `settings.json`.
 - Edits and commands stay off until you turn them on in Settings, and they only exist on the Mac.
+- A message that matches a local safety rule (`Shared/Safety/SafetyFlags.swift`) is refused on the device, and Gatita is never asked. The starting rules cover explosives and malware.
 - Connectors only read. Calendar reads events and never changes them.
 - Creating a pull request runs git and gh only after you confirm.
 

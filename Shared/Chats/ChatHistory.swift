@@ -12,6 +12,8 @@ nonisolated struct Conversation: Codable, Identifiable, Equatable, Sendable {
     var messages: [ChatMessage]
     /// A title Gatita wrote for the chat. Shown instead of the first question once it exists.
     var customTitle: String? = nil
+    /// The mode the chat was started in. A chat stays in that mode. Nil in chats saved before modes existed.
+    var mode: GatitaMode? = nil
 
     var title: String {
         customTitle ?? ChatHistory.title(for: messages)

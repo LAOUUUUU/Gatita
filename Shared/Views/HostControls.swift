@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 #if os(macOS)
 import AppKit
 #endif
@@ -26,6 +27,8 @@ private struct Suggestion: Identifiable {
 struct HostInputBar: View {
     @Bindable var viewModel: ChatViewModel
     @State private var openPanel: Panel?
+    @State private var isDropTargeted = false
+    @State private var showingFilePicker = false
 
     private enum Panel: Equatable {
         case skill
@@ -36,8 +39,14 @@ struct HostInputBar: View {
         Binding(get: { viewModel.draft }, set: { viewModel.draft = $0 })
     }
 
+    /// Code works on the project, so its box says so. Chat is for anything.
+    private var placeholder: String {
+        viewModel.mode == .code ? "Ask Gatita Code about this project" : "Ask anything"
+    }
+
+    /// Nothing to send: no typed text and no dropped file.
     private var isEmpty: Bool {
-        viewModel.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        viewModel.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && viewModel.droppedFiles.isEmpty
     }
 
     /// What the open menu offers: skills for "/", files for "@", and plugins and connectors for "!".
@@ -89,69 +98,164 @@ struct HostInputBar: View {
         .padding(.horizontal)
         .padding(.bottom, 4)
         .animation(.easeOut(duration: 0.15), value: openPanel)
+        .fileImporter(isPresented: $showingFilePicker, allowedContentTypes: [.item],
+                      allowsMultipleSelection: true) { result in
+            switch result {
+            case .success(let urls):
+                viewModel.attachDroppedFiles(urls)
+            case .failure(let error):
+                viewModel.errorMessage = error.localizedDescription
+            }
+        }
     }
 
     /// Every control in the row is 30 points tall, so the icons, the model name, and the send button line up.
+    /// Dropped files sit inside the box, above the controls, the way Claude and ChatGPT show attachments.
     private var promptRow: some View {
-        HStack(alignment: .bottom, spacing: 8) {
-            Button {
-                draft.wrappedValue += "@"
-            } label: {
-                Image(systemName: "paperclip")
-                    .font(.system(size: 15))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 30, height: 30)
+        VStack(alignment: .leading, spacing: 8) {
+            if !viewModel.droppedFiles.isEmpty {
+                droppedFilesRow
             }
-            .buttonStyle(.plain)
-            .help("Attach a project file with @")
-
-            chipButton(.skill) {
-                HStack(spacing: 3) {
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 14))
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 9, weight: .semibold))
+            HStack(alignment: .bottom, spacing: 8) {
+                Button {
+                    showingFilePicker = true
+                } label: {
+                    Image(systemName: "paperclip")
+                        .font(.system(size: 15))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 30, height: 30)
                 }
-                .foregroundStyle(Theme.accent)
-            }
-            .help(skillName)
+                .buttonStyle(.plain)
+                .help("Attach a file")
 
-            TextField("Ask anything", text: draft, axis: .vertical)
-                .textFieldStyle(.plain)
-                .font(.body)
-                .lineLimit(1...10)
-                .padding(.vertical, 6)
-                .onSubmit {
-                    if let first = suggestions.first {
-                        choose(first)
-                    } else {
-                        send()
+                Button {
+                    draft.wrappedValue += "@"
+                } label: {
+                    Text("@")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 30, height: 30)
+                }
+                .buttonStyle(.plain)
+                .help("Mention a project file")
+
+                chipButton(.skill) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.system(size: 14))
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 9, weight: .semibold))
                     }
+                    .foregroundStyle(Theme.accent)
+                }
+                .help(skillName)
+
+                #if os(macOS)
+                ZStack(alignment: .topLeading) {
+                    if draft.wrappedValue.isEmpty {
+                        Text(placeholder)
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 4)
+                            .allowsHitTesting(false)
+                    }
+                    PromptField(text: draft, onReturn: submit,
+                                onDropFiles: { viewModel.attachDroppedFiles($0) },
+                                onLargePaste: { viewModel.attachPastedText($0) },
+                                onDragTargeted: { isDropTargeted = $0 })
+                }
+                .padding(.vertical, 6)
+                #else
+                TextField(placeholder, text: draft, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(.body)
+                    .lineLimit(1...10)
+                    .padding(.vertical, 6)
+                    .onSubmit(submit)
+                #endif
+
+                chipButton(.model) {
+                    HStack(spacing: 4) {
+                        Text(ChatViewModel.displayName(for: viewModel.model))
+                            .font(.callout)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 9, weight: .semibold))
+                    }
+                    .foregroundStyle(.secondary)
                 }
 
-            chipButton(.model) {
-                HStack(spacing: 4) {
-                    Text(ChatViewModel.displayName(for: viewModel.model))
-                        .font(.callout)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 9, weight: .semibold))
+                Button(action: primaryAction) {
+                    Image(systemName: viewModel.isSending ? "stop.fill" : "arrow.up")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 30, height: 30)
+                        .background(Circle().fill(Theme.accent.opacity(isEmpty && !viewModel.isSending ? 0.35 : 1)))
                 }
-                .foregroundStyle(.secondary)
+                .buttonStyle(.plain)
+                .disabled(!viewModel.isSending && isEmpty)
             }
-
-            Button(action: primaryAction) {
-                Image(systemName: viewModel.isSending ? "stop.fill" : "arrow.up")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 30, height: 30)
-                    .background(Circle().fill(Theme.accent.opacity(isEmpty && !viewModel.isSending ? 0.35 : 1)))
-            }
-            .buttonStyle(.plain)
-            .disabled(!viewModel.isSending && isEmpty)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(RoundedRectangle(cornerRadius: 24).fill(Theme.surface))
+        .overlay(RoundedRectangle(cornerRadius: 24).stroke(Theme.accent, lineWidth: isDropTargeted ? 2 : 0))
+        .dropDestination(for: URL.self, action: { urls, _ in
+            viewModel.attachDroppedFiles(urls)
+            return !urls.isEmpty
+        }, isTargeted: { isDropTargeted = $0 })
+        .animation(.easeOut(duration: 0.2), value: viewModel.droppedFiles.count)
+    }
+
+    /// One card per attached file. Each card has a button to take the file back out.
+    private var droppedFilesRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(viewModel.droppedFiles) { file in
+                    fileCard(file)
+                }
+            }
+            .padding(.top, 2)
+        }
+    }
+
+    private func fileCard(_ file: DroppedFile) -> some View {
+        HStack(spacing: 7) {
+            if let data = file.image?.data {
+                ImageThumbnail(data: data, side: 22)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            } else {
+                Image(systemName: "doc.text.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.accent)
+                    .frame(width: 22, height: 22)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Theme.accent.opacity(0.15)))
+            }
+            VStack(alignment: .leading, spacing: 0) {
+                Text(file.name)
+                    .font(.caption.weight(.medium))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text(file.kind)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Button {
+                viewModel.removeDroppedFile(file.id)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 16, height: 16)
+                    .background(Circle().fill(Theme.surface))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 5)
+        .frame(maxWidth: 180, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Theme.background))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.08)))
+        .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
     private func chipButton<Label: View>(_ panel: Panel, @ViewBuilder label: () -> Label) -> some View {
@@ -286,6 +390,15 @@ struct HostInputBar: View {
         }
     }
 
+    /// Return: choose the open menu's first entry, or send.
+    private func submit() {
+        if let first = suggestions.first {
+            choose(first)
+        } else {
+            send()
+        }
+    }
+
     private func send() {
         let text = viewModel.draft
         viewModel.draft = ""
@@ -332,6 +445,7 @@ struct HostSettingsView: View {
                         .textFieldStyle(.roundedBorder)
                     Toggle("Let Gatita edit files in the project", isOn: $viewModel.allowWrites)
                     Toggle("Let Gatita run allowed commands (sandboxed, no network)", isOn: $viewModel.allowCommands)
+                    Toggle("Keep the Mac awake while Gatita is open", isOn: $viewModel.keepAwake)
                 }
                 #else
                 Card("Project") {

@@ -12,6 +12,9 @@ struct HostChatView: View {
     @State private var sidebarChoice: SidebarChoice = .chats
     @State private var search = ""
     @State private var showingPullRequest = false
+    @State private var showingSettings = false
+    @State private var showingShop = false
+    @State private var showingActivity = true
     @State private var promptPositions: [UUID: CGFloat] = [:]
     @State private var scrollOffset: CGFloat = 0
 
@@ -29,7 +32,7 @@ struct HostChatView: View {
         let prompt: String
     }
 
-    private static let starters: [Starter] = [
+    private static let codeStarters: [Starter] = [
         Starter(id: "project", title: "Explain this project", icon: "folder",
                 prompt: "Explain how this project is organized. Start with list_files."),
         Starter(id: "changes", title: "Review my changes", icon: "doc.text.magnifyingglass",
@@ -38,19 +41,77 @@ struct HostChatView: View {
                 prompt: "Find the code with the most logic and suggest tests for it."),
     ]
 
+    /// Regular chat, with no project behind it.
+    private static let chatStarters: [Starter] = [
+        Starter(id: "research", title: "Research brief", icon: "magnifyingglass",
+                prompt: "Write a short research brief on: "),
+        Starter(id: "compare", title: "Compare sources", icon: "arrow.triangle.branch",
+                prompt: "Compare these sources and say where they disagree: "),
+        Starter(id: "draft", title: "Draft a message", icon: "pencil",
+                prompt: "Help me draft a message that "),
+    ]
+
+    /// The Files list and the project actions belong to Code. In Chat, the sidebar shows only chats.
+    private var showsFiles: Bool {
+        sidebarChoice == .files && viewModel.mode == .code
+    }
+
     var body: some View {
+        #if os(macOS)
+        // The Mac uses two plain columns. A NavigationSplitView sidebar floats as a rounded panel, and it keeps a toolbar strip.
+        HStack(spacing: 0) {
+            sidebar
+                .frame(width: 260)
+                .frame(maxHeight: .infinity)
+            Rectangle()
+                .fill(Color.white.opacity(0.06))
+                .frame(width: 1)
+            detail
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if viewModel.mode == .code && showingActivity {
+                Rectangle()
+                    .fill(Color.white.opacity(0.06))
+                    .frame(width: 1)
+                ActivityPanel(viewModel: viewModel) {
+                    showingActivity = false
+                }
+            }
+        }
+        .background(Theme.background.ignoresSafeArea())
+        .navigationTitle("")
+        .sheet(isPresented: $showingSettings) {
+            ScrollView {
+                HostSettingsView(viewModel: viewModel)
+                    .padding()
+            }
+            .frame(width: 560, height: 680)
+            .presentationBackground(Theme.background)
+        }
+        .sheet(isPresented: $showingShop) {
+            ShopView(viewModel: viewModel)
+                .frame(width: 620, height: 680)
+                .presentationBackground(Theme.background)
+        }
+        #else
         NavigationSplitView {
             sidebar
         } detail: {
             detail
         }
         .background(Theme.background)
+        #endif
     }
 
     // MARK: - Sidebar
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 12) {
+            #if os(macOS)
+            HStack {
+                Spacer()
+                ModeSwitch(viewModel: viewModel)
+            }
+            #endif
             HStack(spacing: 8) {
                 Image("GatitaLogo")
                     .renderingMode(.template)
@@ -60,6 +121,17 @@ struct HostChatView: View {
                     .foregroundStyle(.white)
                 Text("Gatita Ask")
                     .font(.headline)
+                #if os(macOS)
+                Spacer()
+                if viewModel.mode == .code {
+                    sidebarIcon("folder", help: "Project files") {
+                        sidebarChoice = sidebarChoice == .files ? .chats : .files
+                    }
+                }
+                sidebarIcon("bag", help: "Shop") {
+                    showingShop = true
+                }
+                #endif
             }
 
             Button {
@@ -75,26 +147,62 @@ struct HostChatView: View {
             TextField("Search chats", text: $search)
                 .textFieldStyle(.roundedBorder)
 
-            #if os(macOS)
-            Picker("Sidebar", selection: $sidebarChoice) {
-                ForEach(SidebarChoice.allCases) { choice in
-                    Text(choice.rawValue).tag(choice)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .tint(Theme.accent)
-            #endif
-
-            if sidebarChoice == .files {
+            Text(showsFiles ? "Files" : "Chats")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if showsFiles {
                 filesList
             } else {
                 chatList
             }
+            #if os(macOS)
+            profileRow
+            #endif
         }
         .padding(12)
-        .background(Theme.background)
+        .background(Theme.background.ignoresSafeArea())
         .navigationSplitViewColumnWidth(min: 220, ideal: 260)
+    }
+
+    /// A small icon button at the top of the sidebar.
+    private func sidebarIcon(_ name: String, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: name)
+                .font(.system(size: 14))
+                .foregroundStyle(.secondary)
+                .frame(width: 26, height: 26)
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
+
+    /// The account row at the bottom of the sidebar. It opens Settings.
+    private var profileRow: some View {
+        let name = NSFullUserName().components(separatedBy: " ").first ?? "Gatita"
+        return Button {
+            showingSettings = true
+        } label: {
+            HStack(spacing: 10) {
+                Circle()
+                    .fill(Theme.surface)
+                    .frame(width: 30, height: 30)
+                    .overlay(Text(String(name.prefix(1))).font(.callout.weight(.semibold)))
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(name.isEmpty ? "Gatita" : name)
+                        .font(.callout.weight(.medium))
+                    Text("Settings")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(10)
+            .background(RoundedRectangle(cornerRadius: 12).fill(Theme.surface.opacity(0.5)))
+        }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder
@@ -107,7 +215,7 @@ struct HostChatView: View {
     }
 
     private var chatList: some View {
-        let chats = viewModel.conversations
+        let chats = viewModel.conversations(in: viewModel.mode)
             .sorted { $0.updatedAt > $1.updatedAt }
             .filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }
 
@@ -174,18 +282,45 @@ struct HostChatView: View {
                 .foregroundStyle(.secondary)
                 .padding(.bottom, 8)
         }
+        #if os(macOS)
+        .overlay(alignment: .topTrailing) {
+            HStack(spacing: 10) {
+                if viewModel.mode == .code {
+                    Button {
+                        showingActivity.toggle()
+                    } label: {
+                        Image(systemName: "sidebar.trailing")
+                            .font(.system(size: 14))
+                            .foregroundStyle(showingActivity ? Theme.accent : .secondary)
+                            .frame(width: 30, height: 30)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Activity")
+                }
+                NotificationBadge(viewModel: viewModel)
+                if viewModel.mode == .code {
+                    Button {
+                        showingPullRequest = true
+                    } label: {
+                        Image(systemName: "arrow.triangle.pull")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 30, height: 30)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Create a pull request")
+                }
+            }
+            .padding(.top, 12)
+            .padding(.trailing, 16)
+        }
+        #else
         .toolbar {
             ToolbarItemGroup {
                 NotificationBadge(viewModel: viewModel)
-                #if os(macOS)
-                Button {
-                    showingPullRequest = true
-                } label: {
-                    Label("Create PR", systemImage: "arrow.triangle.pull")
-                }
-                #endif
             }
         }
+        #endif
         #if os(macOS)
         .sheet(isPresented: $showingPullRequest) {
             pullRequestSheet
@@ -206,14 +341,13 @@ struct HostChatView: View {
                 .font(.title2)
                 .foregroundStyle(.white.opacity(0.85))
             HStack(spacing: 10) {
-                ForEach(Self.starters) { item in
+                ForEach(viewModel.mode == .code ? Self.codeStarters : Self.chatStarters) { item in
                     Button {
                         viewModel.draft = item.prompt
                     } label: {
                         Label(item.title, systemImage: item.icon)
                     }
-                    .buttonStyle(.bordered)
-                    .clipShape(Capsule())
+                    .buttonStyle(PillButtonStyle())
                 }
             }
             Spacer()

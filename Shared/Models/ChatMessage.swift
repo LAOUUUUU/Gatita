@@ -8,6 +8,13 @@
 
 import Foundation
 
+/// A picture the user attached. Its bytes go to the model as a data URL, and it stays in the saved chat.
+struct ChatImage: Codable, Hashable {
+    let name: String
+    let mimeType: String
+    let data: Data
+}
+
 struct ChatMessage: Identifiable, Codable, Hashable {
     let id: UUID
     let role: String   // "user" or "assistant"
@@ -20,6 +27,11 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     var errorText: String?
     /// Text the model receives with this message (attached files, plugin summaries). Not shown in the bubble.
     var attachedContext: String
+    /// Pictures attached to this message. Optional, so chats saved before pictures existed still load.
+    var images: [ChatImage]?
+
+    /// The pictures attached to this message, or none.
+    var attachedImages: [ChatImage] { images ?? [] }
 
     init(id: UUID = UUID(),
          role: String,
@@ -28,7 +40,8 @@ struct ChatMessage: Identifiable, Codable, Hashable {
          activities: [ToolActivity] = [],
          isStreaming: Bool = false,
          errorText: String? = nil,
-         attachedContext: String = "") {
+         attachedContext: String = "",
+         images: [ChatImage]? = nil) {
         self.id = id
         self.role = role
         self.content = content
@@ -37,6 +50,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         self.isStreaming = isStreaming
         self.errorText = errorText
         self.attachedContext = attachedContext
+        self.images = images
     }
 
     /// What the model receives: the message plus its attachments.
@@ -51,4 +65,8 @@ struct ToolActivity: Identifiable, Codable, Hashable {
     let arguments: String
     /// nil while the tool is still running.
     var result: String?
+    /// The diff of the file this tool changed. Shown in place of the raw arguments.
+    var change: FileChange?
+    var startedAt: Date?
+    var finishedAt: Date?
 }

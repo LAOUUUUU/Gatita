@@ -12,6 +12,19 @@ enum Theme {
     static let surface = Color(white: 0.14)
 }
 
+/// A pill with a thin outline, for the starter prompts.
+struct PillButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.callout)
+            .foregroundStyle(.white.opacity(0.85))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(Capsule().fill(Theme.surface.opacity(configuration.isPressed ? 0.8 : 0.45)))
+            .overlay(Capsule().stroke(Color.white.opacity(0.1)))
+    }
+}
+
 /// A rounded panel with a small title, used to group settings and other lists.
 struct Card<Content: View>: View {
     let title: String

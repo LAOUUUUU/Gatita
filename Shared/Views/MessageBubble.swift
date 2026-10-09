@@ -12,15 +12,47 @@ struct MessageBubble: View {
     let message: ChatMessage
 
     var body: some View {
-        if message.role == "user" {
-            Text(message.content)
-                .padding(10)
-                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18))
-                .frame(maxWidth: 560, alignment: .trailing)
-                .frame(maxWidth: .infinity, alignment: .trailing)
+        if message.role == "error" {
+            errorBubble
+        } else if message.role == "user" {
+            VStack(alignment: .trailing, spacing: 6) {
+                if !message.attachedImages.isEmpty {
+                    HStack(spacing: 6) {
+                        ForEach(Array(message.attachedImages.enumerated()), id: \.offset) { _, image in
+                            ImageThumbnail(data: image.data, side: 120)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                    }
+                }
+                if !message.content.isEmpty {
+                    Text(message.content)
+                        .padding(10)
+                        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18))
+                }
+            }
+            .frame(maxWidth: 560, alignment: .trailing)
+            .frame(maxWidth: .infinity, alignment: .trailing)
         } else {
             assistantBubble
         }
+    }
+
+    /// A red bubble for something that went wrong. The detail, if any, is what the server or the system gave.
+    private var errorBubble: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(message.content)
+                .font(.callout.weight(.semibold))
+            if let detail = message.errorText {
+                Text(detail)
+                    .font(.callout)
+            }
+        }
+        .foregroundStyle(Color(red: 1.0, green: 0.45, blue: 0.45))
+        .padding(12)
+        .frame(maxWidth: 560, alignment: .leading)
+        .background(Color.red.opacity(0.14), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.red.opacity(0.35)))
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var assistantBubble: some View {

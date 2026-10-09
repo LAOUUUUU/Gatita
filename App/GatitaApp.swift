@@ -40,6 +40,9 @@ struct GatitaApp: App {
             #endif
         }
         .defaultSize(width: 1100, height: 720)
+        #if os(macOS)
+        .windowStyle(.hiddenTitleBar)
+        #endif
 
         #if os(macOS)
         MenuBarExtra {

@@ -11,6 +11,13 @@ struct HostRootView: View {
     let viewModel: ChatViewModel
 
     var body: some View {
+        #if os(macOS)
+        // On the Mac the chat is the whole window. Settings and Shop open from the sidebar.
+        HostChatView(viewModel: viewModel)
+            .preferredColorScheme(.dark)
+            .tint(Theme.accent)
+            .background(Theme.background.ignoresSafeArea())
+        #else
         TabView {
             HostChatView(viewModel: viewModel)
                 .tabItem { Label("Chat", systemImage: "bubble.left.and.bubble.right") }
@@ -27,6 +34,7 @@ struct HostRootView: View {
         .preferredColorScheme(.dark)
         .tint(Theme.accent)
         .background(Theme.background.ignoresSafeArea())
+        #endif
     }
 }
 #endif

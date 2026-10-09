@@ -49,6 +49,9 @@ struct MenuBarMenu: View {
             Text("Nothing new")
         }
         Divider()
+        Toggle("Keep the Mac awake", isOn: Binding(
+            get: { viewModel.keepAwake },
+            set: { viewModel.keepAwake = $0 }))
         Button("Open Gatita") {
             openWindow(id: "main")
             NSApplication.shared.activate(ignoringOtherApps: true)

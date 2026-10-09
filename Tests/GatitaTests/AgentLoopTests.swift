@@ -65,6 +65,10 @@ final class AgentLoopTests: XCTestCase {
                 events.append("start:\(id):\(name):\(arguments)")
             case .toolFinished(let id, _, let result):
                 events.append("done:\(id):\(result.contains("App/GatitaApp.swift"))")
+            case .safetyStop:
+                events.append("safety")
+            case .fileChanged:
+                break
             }
         }
         XCTAssertEqual(final, "mock: found App/GatitaApp.swift")
@@ -88,6 +92,15 @@ final class AgentLoopTests: XCTestCase {
         let skilled = GatitaClient(apiKey: "test-key", baseURL: MockGatita.base, extraInstructions: "SKILL-TEST")
         let reply = try await skilled.send(messages: [ChatMessage(role: "user", content: "hi")])
         XCTAssertEqual(reply, "mock: skill seen")
+    }
+
+    func testASubagentAnswersItsTask() async throws {
+        let registry = TaskRegistry()
+        let client = GatitaClient(apiKey: "test-key", baseURL: MockGatita.base)
+        let id = registry.spawnAgent(task: "hi", client: client)
+        let answer = await registry.agentResult(id)
+        XCTAssertEqual(answer, "mock: no tool instructions")
+        XCTAssertEqual(registry.agents.first?.status, .done)
     }
 
     func testAskUserSendsTheQuestionAndNoToolRuns() async throws {

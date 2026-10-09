@@ -24,22 +24,80 @@ final class GatitaClient {
     private let model: String
     private let tools: ProjectTools?
     private let extraInstructions: String?
+    private let tasks: TaskRegistry?
     private let session: URLSession
 
     init(apiKey: String,
          baseURL: URL = GatitaClient.defaultBaseURL,
          model: String = "gatita-7.1-max",
          tools: ProjectTools? = nil,
-         extraInstructions: String? = nil) {
+         extraInstructions: String? = nil,
+         tasks: TaskRegistry? = nil) {
         self.apiKey = apiKey
         self.baseURL = baseURL
         self.model = model
         self.tools = tools
         self.extraInstructions = extraInstructions
+        self.tasks = tasks
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 120
         config.waitsForConnectivity = false
         self.session = URLSession(configuration: config)
+    }
+
+    /// The instructions a subagent runs with.
+    nonisolated static let subagentInstructions = "You are a subagent working for Gatita on one task. Do only that task. Read the project as needed, and reply with the result in plain text. You cannot edit files, run commands, or start other subagents."
+
+    /// Runs the tools that start, check, and stop background commands, and start and collect subagents. Nil for every other tool.
+    private func runTaskTool(name: String, arguments: String, tools: ProjectTools) async -> String? {
+        let taskToolNames: Set<String> = ["run_background", "task_status", "task_stop", "spawn_agent", "agent_result"]
+        guard taskToolNames.contains(name) else { return nil }
+        guard let registry = tasks else {
+            return "error: background commands and subagents are not available here."
+        }
+        let args = (try? JSONDecoder().decode([String: String].self, from: Data(arguments.utf8))) ?? [:]
+
+        switch name {
+        case "run_background":
+            guard tools.allowsBackground, let root = tools.root else {
+                return "error: background commands need Code mode, a project folder, and running commands turned on in Settings."
+            }
+            guard let command = args["command"], let argv = CommandPolicy.allowed(command, tools.commands) else {
+                return "error: that command is not on the allowed list, or it uses shell syntax"
+            }
+            do {
+                let id = try registry.startBackground(argv, command: command, in: root)
+                return "started background task \(id). It keeps running after this reply. Check it with task_status."
+            } catch {
+                return "error: \(error.localizedDescription)"
+            }
+
+        case "task_status":
+            guard let id = args["id"] else { return "error: missing argument id" }
+            guard let task = registry.backgroundTask(id) else { return "error: no background task with id \(id)" }
+            let exit = task.exitCode.map { "exit code \($0)" } ?? "no exit code yet"
+            return "status: \(String(describing: task.status))\n\(exit)\noutput:\n\(task.output.suffix(3000))"
+
+        case "task_stop":
+            guard let id = args["id"] else { return "error: missing argument id" }
+            return registry.stopBackground(id) ? "stopped \(id)." : "error: \(id) is not running"
+
+        case "spawn_agent":
+            guard tools.allowsSubagents, let task = args["task"], !task.isEmpty else {
+                return "error: spawn_agent needs Code mode, a project folder, and a task"
+            }
+            let agent = GatitaClient(apiKey: apiKey, baseURL: baseURL, model: model,
+                                     tools: tools.readOnlyForSubagents(), extraInstructions: Self.subagentInstructions)
+            let id = registry.spawnAgent(task: task, client: agent)
+            return "started subagent \(id). It works alone in a read-only run. Get its answer with agent_result."
+
+        case "agent_result":
+            guard let id = args["id"] else { return "error: missing argument id" }
+            return await registry.agentResult(id)
+
+        default:
+            return nil
+        }
     }
 
     /// Plain request without events, used by the remote host path.
@@ -47,11 +105,25 @@ final class GatitaClient {
         try await stream(messages: messages) { _ in }
     }
 
+    /// A chat message as the API takes it. Pictures go next to the text as data URLs.
+    static func wire(_ message: ChatMessage) -> WireMessage {
+        let images = message.attachedImages
+        guard !images.isEmpty else {
+            return WireMessage(role: message.role, content: message.sentText)
+        }
+        var parts = [WireContent.Part(type: "text", text: message.sentText, imageURL: nil)]
+        for image in images {
+            let url = "data:\(image.mimeType);base64,\(image.data.base64EncodedString())"
+            parts.append(WireContent.Part(type: "image_url", text: nil, imageURL: .init(url: url)))
+        }
+        return WireMessage(role: message.role, content: .parts(parts))
+    }
+
     /// Streams the reply and runs tool blocks as the model writes them.
     /// Returns the final text. `onEvent` is called on the main actor.
     @discardableResult
     func stream(messages: [ChatMessage], onEvent: (StreamEvent) -> Void) async throws -> String {
-        var history = messages.map { WireMessage(role: $0.role, content: $0.sentText) }
+        var history = messages.map { GatitaClient.wire($0) }
         let system = [tools?.instructions, extraInstructions].compactMap { $0 }.filter { !$0.isEmpty }
         if !system.isEmpty {
             history.insert(WireMessage(role: "system", content: system.joined(separator: "\n\n")), at: 0)
@@ -77,8 +149,17 @@ final class GatitaClient {
             let id = "t\(toolNumber)"
             let name = Self.toolName(in: block)
             onEvent(.toolStarted(id: id, name: name, arguments: block))
-            let result = await tools.execute(name: name, arguments: block)
+            let change = tools.changePreview(name: name, arguments: block)
+            let result: String
+            if let handled = await runTaskTool(name: name, arguments: block, tools: tools) {
+                result = handled
+            } else {
+                result = await tools.execute(name: name, arguments: block)
+            }
             onEvent(.toolFinished(id: id, name: name, result: result))
+            if let change, !result.hasPrefix("error:") {
+                onEvent(.fileChanged(id: id, change: change))
+            }
             history.append(WireMessage(role: "user",
                                        content: "<gatita-tool-result name=\"\(name)\">\n\(result)\n</gatita-tool-result>"))
         }
@@ -119,7 +200,11 @@ final class GatitaClient {
             if payload == "[DONE]" { break }
             guard let data = payload.data(using: .utf8),
                   let chunk = try? JSONDecoder().decode(StreamChunk.self, from: data),
-                  let delta = chunk.choices.first?.delta else { continue }
+                  let choice = chunk.choices.first else { continue }
+            if choice.finishReason == "content_filter" {
+                onEvent(.safetyStop)
+            }
+            let delta = choice.delta
 
             if let piece = delta.reasoningContent ?? delta.reasoning, !piece.isEmpty {
                 onEvent(.reasoning(piece))
@@ -197,11 +282,32 @@ nonisolated enum StreamEvent: Sendable {
     case toolFinished(id: String, name: String, result: String)
     /// Gatita asked the user something and is waiting for the answer.
     case question(String)
+    /// The model stopped the reply because a safety filter fired (finish_reason "content_filter").
+    case safetyStop
+    /// A write or edit changed a file. The change is the diff the chat shows.
+    case fileChanged(id: String, change: FileChange)
 }
 
 nonisolated enum GatitaError: LocalizedError {
     case http(status: Int, body: String)
     case toolRoundLimit
+
+    /// The reason the server gave, from an error body such as {"error": {"message": "..."}}.
+    /// Nil when the body has none, so the app never invents one.
+    static func serverReason(in body: String) -> String? {
+        guard let data = body.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        if let error = object["error"] as? [String: Any], let message = error["message"] as? String, !message.isEmpty {
+            return message
+        }
+        if let error = object["error"] as? String, !error.isEmpty {
+            return error
+        }
+        if let message = object["message"] as? String, !message.isEmpty {
+            return message
+        }
+        return nil
+    }
 
     var errorDescription: String? {
         switch self {
@@ -213,10 +319,60 @@ nonisolated enum GatitaError: LocalizedError {
     }
 }
 
+/// A message's content as the API takes it: a plain string, or a list of parts when the message has pictures.
+nonisolated enum WireContent: Codable, Sendable, Equatable {
+    case text(String)
+    case parts([Part])
+
+    /// One piece of a multi-part message: text, or a picture as a data URL.
+    struct Part: Codable, Sendable, Equatable {
+        let type: String
+        let text: String?
+        let imageURL: ImageURL?
+
+        struct ImageURL: Codable, Sendable, Equatable {
+            let url: String
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case type, text
+            case imageURL = "image_url"
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .text(let text):
+            try container.encode(text)
+        case .parts(let parts):
+            try container.encode(parts)
+        }
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let text = try? container.decode(String.self) {
+            self = .text(text)
+        } else {
+            self = .parts(try container.decode([Part].self))
+        }
+    }
+}
+
 /// One message in OpenAI chat format.
 nonisolated struct WireMessage: Codable, Sendable {
     let role: String
-    let content: String
+    let content: WireContent
+
+    init(role: String, content: WireContent) {
+        self.role = role
+        self.content = content
+    }
+
+    init(role: String, content: String) {
+        self.init(role: role, content: .text(content))
+    }
 }
 
 private nonisolated struct ChatRequest: Encodable {
@@ -229,6 +385,12 @@ private nonisolated struct ChatRequest: Encodable {
 private nonisolated struct StreamChunk: Decodable {
     struct Choice: Decodable {
         let delta: Delta
+        let finishReason: String?
+
+        enum CodingKeys: String, CodingKey {
+            case delta
+            case finishReason = "finish_reason"
+        }
     }
 
     struct Delta: Decodable {
