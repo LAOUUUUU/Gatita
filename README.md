@@ -5,6 +5,8 @@ A SwiftUI chat app for Gatita's API, for iPhone and Mac. Hosts run the chat and 
 ## What it does
 
 - Chat with Gatita, with streamed replies and visible thinking.
+- Saved chats in the sidebar, titled by Gatita. Each prompt has a line on the right edge of the chat; click one to jump to that prompt.
+- A badge in the toolbar and a menu bar item show finished replies and questions from Gatita.
 - On a Mac, Gatita can read and search a project folder, run allowed commands in a macOS sandbox, read GitHub pull requests and issues through `gh`, and read public web pages.
 - Pick skills with `/`, project files with `@`, and plugins or connectors with `!`.
 - A Shop with free plugins, skills, and connectors bundled with the app.
