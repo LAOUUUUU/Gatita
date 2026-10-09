@@ -7,8 +7,8 @@ Gatita is one SwiftUI app with several targets. The Mac is the full host. iPhone
 | Folder | What is in it |
 |---|---|
 | `App/` | The app entry point (`GatitaApp.swift`) and the asset catalog (icons, logo, menu bar icon). |
-| `Shared/` | Code for every platform that builds it: networking, tools, connectors, models, view model, views, shop, settings, chat history, logging. |
-| `macOS/` | Code that only makes sense on the Mac: the sandboxed command runner, the web check, the GitHub and Calendar connectors, the git process runner, the menu bar, the file tree, and the pull-request sheet. |
+| `Shared/` | Code for every platform that builds it: networking, tools, connectors, models, view model, views, shop, settings, chat history, logging, safety rules, and the task registry (`Shared/Tasks`). |
+| `macOS/` | Code that only makes sense on the Mac: the sandboxed command runner and background process, the web check, the GitHub and Calendar connectors, the git process runner, the menu bar, the file tree, the pull-request sheet, the mode switch, the activity panel, and the sleep guard. |
 | `watchOS/` | Watch-only input and speech code. Not in a built target yet. |
 | `iOS/`, `visionOS/`, `tvOS/` | Reserved for code that only that OS needs. Empty for now. See [002](decisions/002-per-os-folders.md). |
 | `Tests/GatitaTests/` | The unit tests (XCTest). |
@@ -26,6 +26,28 @@ Gatita is one SwiftUI app with several targets. The Mac is the full host. iPhone
 - **iPhone, iPad, Vision Pro:** no project folder, so every file tool, command, and PR path is refused. GitHub and calendar are not offered. Web reads and the ask and report tools remain.
 
 The decision is in [001](decisions/001-question-only-hosts.md).
+
+## Modes and sessions
+
+`GatitaMode` (`Shared/Models/GatitaMode.swift`) has two modes.
+
+- **Chat** is regular chat. No project tools, no commands, no plugin commands, and no GitHub. Web reads and calendar stay available.
+- **Code** works on a project folder: file reads and edits (when turned on), allowed commands, plugin commands, background tasks, subagents, and GitHub.
+
+A saved chat records the mode it was started in (`Conversation.mode`), and the sidebar lists only the chats of the current mode. Switching modes saves the chat on screen and starts a fresh one (`ChatViewModel.switchMode`). Chats saved before modes existed count as Code.
+
+## Background tasks and subagents
+
+`TaskRegistry` (`Shared/Tasks/TaskRegistry.swift`) keeps the background commands and subagents for this run of the app. The model reaches it through five tools, handled in `GatitaClient` before the project tools:
+
+- `run_background`, `task_status`, and `task_stop` start, read, and stop a command that runs past the reply. Background commands use the same sandbox and allow-list as other commands (`macOS/BackgroundProcess.swift`).
+- `spawn_agent` and `agent_result` start a subagent and collect its answer. A subagent gets a read-only copy of the project tools (`ProjectTools.readOnlyForSubagents`), with no commands, no edits, and no subagents of its own.
+
+Each tool call records its start and finish time (`ToolActivity.startedAt` and `finishedAt`), so the activity panel can show status and duration.
+
+## Changes and the activity panel
+
+Before a write or edit runs, `ProjectTools.changePreview` works out the change as a diff (`LineDiff`). The change is attached to the tool call only when the edit succeeds. In Code mode, the activity panel (`macOS/ActivityPanel.swift`) lists tool calls, background tasks, subagents, and changed files.
 
 ## How a request flows
 
@@ -57,6 +79,13 @@ Everything stays on the device. Nothing is sent to a service other than the Gati
 - Web reads are https only, and refuse localhost and private addresses.
 - GitHub reads use fixed `gh` commands with the repository taken from the git remote.
 - Calendar reads need the user's permission. The Release build's sandbox has the calendar entitlement, and the Info.plist has the usage text.
+
+## Recent decisions
+
+- [001](decisions/001-question-only-hosts.md): question-only hosts on iPhone, iPad, and Vision Pro.
+- [002](decisions/002-per-os-folders.md): one folder per operating system for OS-only code.
+- [003](decisions/003-hosted-shop-deferred.md): the hosted shop waits for a reviewed, signed catalog.
+- [004](decisions/004-tvos-and-watchos-transport.md): how tvOS and watchOS clients reach a host (open).
 
 ## Tests
 
