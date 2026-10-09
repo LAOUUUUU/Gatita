@@ -1,0 +1,12 @@
+{
+  "name": "test-tools",
+  "description": "Checks that plugins load and that commands run inside the sandbox.",
+  "skills": [
+    {
+      "id": "plugin-check",
+      "name": "Plugin check",
+      "instructions": "Confirm plugins work. Run uname -a and sw_vers with run_command, then report the output in two short lines. If run_command says it is turned off, say so and tell the user to turn on \"Let Gatita run allowed commands\" in Settings."
+    }
+  ],
+  "commands": ["uname -a", "sw_vers"]
+}

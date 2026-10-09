@@ -32,7 +32,7 @@ struct ShopView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                ForEach(Shop.items.filter { $0.kind == category.kind }) { item in
+                ForEach(Shop.items.filter { $0.kind == category.kind && HostPolicy.allows($0) }) { item in
                     itemRow(item)
                 }
 

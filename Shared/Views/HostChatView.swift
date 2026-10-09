@@ -242,7 +242,7 @@ struct HostChatView: View {
                     .padding(.vertical, 28)
                     .coordinateSpace(name: "chatContent")
                 }
-                .scrollIndicators(.hidden)
+                .scrollIndicators(.never)
                 .frame(maxWidth: 760)
                 .onScrollGeometryChange(for: CGFloat.self) { geometry in
                     geometry.contentOffset.y

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Gatita sends prompts between your own devices on this network, so a phone or another Mac can ask a host for replies.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_gatita-host._tcp</string>
+		<string>_gatita-host._udp</string>
+	</array>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Gatita reads your events when you ask about your schedule. It never changes them.</string>
+</dict>
+</plist>

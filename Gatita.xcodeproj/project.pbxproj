@@ -8,6 +8,7 @@
 
 /* Begin PBXFileReference section */
 		08532C8930785FAE00E3BF67 /* Gatita.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Gatita.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		15A378DBD10E4C21AF46638E /* GatitaTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GatitaTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -26,10 +27,25 @@
 			path = watchOS;
 			sourceTree = "<group>";
 		};
+		9CD9F5D23D4F4920889E701D /* macOS */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = macOS;
+			sourceTree = "<group>";
+		};
+		BD2ACC3966804C519CD25946 /* GatitaTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Tests/GatitaTests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		08532C6B307857E600E3BF67 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+		ADBA5D777DBB46D5BEAE40D8 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
 			);
@@ -43,7 +59,10 @@
 				08532C7D30785EF500E3BF67 /* App */,
 				08532C7F30785F1100E3BF67 /* Shared */,
 				08532C8530785F8A00E3BF67 /* watchOS */,
+				9CD9F5D23D4F4920889E701D /* macOS */,
 				08532C8930785FAE00E3BF67 /* Gatita.app */,
+				BD2ACC3966804C519CD25946 /* GatitaTests */,
+				15A378DBD10E4C21AF46638E /* GatitaTests.xctest */,
 			);
 			sourceTree = "<group>";
 		};
@@ -64,11 +83,33 @@
 				08532C7D30785EF500E3BF67 /* App */,
 				08532C7F30785F1100E3BF67 /* Shared */,
 				08532C8530785F8A00E3BF67 /* watchOS */,
+				9CD9F5D23D4F4920889E701D /* macOS */,
 			);
 			name = Gatita;
 			productName = Gatita;
 			productReference = 08532C8930785FAE00E3BF67 /* Gatita.app */;
 			productType = "com.apple.product-type.application";
+		};
+		F8F006FEC1FE4693ADF4EDB9 /* GatitaTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4E243332CE614C64B5813DCF /* Build configuration list for PBXNativeTarget "GatitaTests" */;
+			buildPhases = (
+				7DD13CFB495B45DE93DD6B9E /* Sources */,
+				ADBA5D777DBB46D5BEAE40D8 /* Frameworks */,
+				DD106649E8CC4434B489FF80 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				5CB9A30AD1A048C0861C9C98 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				BD2ACC3966804C519CD25946 /* GatitaTests */,
+			);
+			name = GatitaTests;
+			productName = GatitaTests;
+			productReference = 15A378DBD10E4C21AF46638E /* GatitaTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
 
@@ -101,12 +142,28 @@
 			projectRoot = "";
 			targets = (
 				08532C6D307857E600E3BF67 /* Gatita */,
+				F8F006FEC1FE4693ADF4EDB9 /* GatitaTests */,
 			);
 		};
 /* End PBXProject section */
 
+/* Begin PBXContainerItemProxy section */
+		D85BB2BB11BF401F83A4ECD7 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 08532C66307857E600E3BF67 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 08532C6D307857E600E3BF67;
+			remoteInfo = Gatita;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXResourcesBuildPhase section */
 		08532C6C307857E600E3BF67 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		DD106649E8CC4434B489FF80 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
 			);
@@ -119,7 +176,20 @@
 			files = (
 			);
 		};
+		7DD13CFB495B45DE93DD6B9E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		5CB9A30AD1A048C0861C9C98 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 08532C6D307857E600E3BF67 /* Gatita */;
+			targetProxy = D85BB2BB11BF401F83A4ECD7 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		08532C77307857E600E3BF67 /* Debug configuration for PBXProject "Gatita" */ = {
@@ -248,6 +318,10 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Info.plist;
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = Gatita.entitlements;
+				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
@@ -293,6 +367,10 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Info.plist;
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = Gatita.entitlements;
+				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
@@ -325,6 +403,46 @@
 			};
 			name = Release;
 		};
+		214EDA55876C47138409076F /* Debug configuration for PBXNativeTarget "GatitaTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.6;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = Gatita.GatitaTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Gatita.app/Contents/MacOS/Gatita";
+			};
+			name = Debug;
+		};
+		A5397196520D493F8CD3939D /* Release configuration for PBXNativeTarget "GatitaTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.6;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = Gatita.GatitaTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Gatita.app/Contents/MacOS/Gatita";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -341,6 +459,14 @@
 			buildConfigurations = (
 				08532C7A307857E600E3BF67 /* Debug configuration for PBXNativeTarget "Gatita" */,
 				08532C7B307857E600E3BF67 /* Release configuration for PBXNativeTarget "Gatita" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		4E243332CE614C64B5813DCF /* Build configuration list for PBXNativeTarget "GatitaTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				214EDA55876C47138409076F /* Debug configuration for PBXNativeTarget "GatitaTests" */,
+				A5397196520D493F8CD3939D /* Release configuration for PBXNativeTarget "GatitaTests" */,
 			);
 			defaultConfigurationName = Release;
 		};

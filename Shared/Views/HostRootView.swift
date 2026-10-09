@@ -5,7 +5,7 @@
 
 import SwiftUI
 
-#if os(iOS) || os(macOS)
+#if os(iOS) || os(macOS) || os(visionOS)
 /// The host device's screens: the chat, and a Settings tab for the key, model, and project folder.
 struct HostRootView: View {
     let viewModel: ChatViewModel

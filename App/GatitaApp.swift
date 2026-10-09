@@ -13,7 +13,7 @@ import AppKit
 
 @main
 struct GatitaApp: App {
-    #if os(iOS) || os(macOS)
+    #if os(iOS) || os(macOS) || os(visionOS)
     @State private var hostSession = HostSession()
     #elseif !os(watchOS)
     @State private var clientSession = ClientSession()
@@ -33,7 +33,7 @@ struct GatitaApp: App {
         WindowGroup(id: "main") {
             #if os(watchOS)
             ChatView(viewModel: chatViewModel, clientSession: nil)
-            #elseif os(iOS) || os(macOS)
+            #elseif os(iOS) || os(macOS) || os(visionOS)
             HostRootView(viewModel: chatViewModel)
             #else
             ChatView(viewModel: chatViewModel, clientSession: clientSession)

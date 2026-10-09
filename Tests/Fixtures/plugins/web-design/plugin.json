@@ -1,0 +1,16 @@
+{
+  "name": "web-design",
+  "description": "Skills for checking and fixing HTML and CSS pages with web_check.",
+  "skills": [
+    {
+      "id": "responsive-check",
+      "name": "Responsive check",
+      "instructions": "Run web_check on each HTML page you are asked about. For each problem it reports, read the CSS that controls that layout and propose the smallest fix. If writing is on, make the edit, run web_check again, and say which problems are gone."
+    },
+    {
+      "id": "accessibility",
+      "name": "Accessibility pass",
+      "instructions": "Check the HTML for images without alt text, form fields without labels, skipped heading levels, and tap targets under 24 px. Use search_text to find each one and report file and line before changing anything."
+    }
+  ]
+}

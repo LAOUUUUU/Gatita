@@ -17,7 +17,9 @@ import UIKit
 @MainActor
 final class ClientSession: NSObject {
     var isConnected = false
+    /// The reply so far. It grows while the host streams Gatita's answer.
     var lastResponse = ""
+    private var assembler = ReplyAssembler()
 
     private let serviceType = "gatita-host"
     private let peerID: MCPeerID
@@ -44,6 +46,8 @@ final class ClientSession: NSObject {
     }
 
     func sendPrompt(_ text: String) {
+        assembler = ReplyAssembler()
+        lastResponse = ""
         guard let data = try? JSONEncoder().encode(RemoteMessage.prompt(text: text, clientName: peerID.displayName)),
               !session.connectedPeers.isEmpty else { return }
         try? session.send(data, toPeers: session.connectedPeers, with: .reliable)
@@ -56,9 +60,11 @@ extension ClientSession: MCSessionDelegate {
     }
 
     nonisolated func session(_ session: MCSession, didReceive data: Data, fromPeer peerID: MCPeerID) {
-        guard let message = try? JSONDecoder().decode(RemoteMessage.self, from: data),
-              case .response(let text) = message else { return }
-        Task { @MainActor in self.lastResponse = text }
+        guard let message = try? JSONDecoder().decode(RemoteMessage.self, from: data) else { return }
+        Task { @MainActor in
+            self.assembler.receive(message)
+            self.lastResponse = self.assembler.text
+        }
     }
 
     nonisolated func session(_ session: MCSession, didReceive stream: InputStream, withName: String, fromPeer: MCPeerID) {}

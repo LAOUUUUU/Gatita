@@ -61,6 +61,7 @@ struct HostInputBar: View {
                                detail: "plugin · \($0.description)", action: .insert("!\($0.name)"))
                 }
             let connectorRows = Connectors.catalog
+                .filter { HostPolicy.allows($0) }
                 .filter { needle.isEmpty || $0.id.contains(needle) || $0.name.lowercased().contains(needle) }
                 .map {
                     Suggestion(id: "connector:\($0.id)", title: "!\($0.id)",
@@ -325,15 +326,23 @@ struct HostSettingsView: View {
                     .disabled(viewModel.apiKey.isEmpty)
                 }
 
+                #if os(macOS)
                 Card("Project") {
                     TextField("e.g. ~/Documents/Gatita", text: $viewModel.projectRoot)
                         .textFieldStyle(.roundedBorder)
                     Toggle("Let Gatita edit files in the project", isOn: $viewModel.allowWrites)
                     Toggle("Let Gatita run allowed commands (sandboxed, no network)", isOn: $viewModel.allowCommands)
                 }
+                #else
+                Card("Project") {
+                    Text("Project files, edits, and commands are on the Mac. Here Gatita answers questions and reads public web pages.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                #endif
 
                 Card("Connectors") {
-                    ForEach(Connectors.catalog) { connector in
+                    ForEach(Connectors.catalog.filter { HostPolicy.allows($0) }) { connector in
                         VStack(alignment: .leading, spacing: 2) {
                             Toggle("!\(connector.id)  \(connector.name)", isOn: connectorBinding(connector.id))
                             Text(connector.summary)
@@ -341,7 +350,7 @@ struct HostSettingsView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
-                    Text("GitHub uses your gh login. Gmail and Calendar need a Google sign-in set up first, so they are not here yet.")
+                    Text("GitHub uses your gh login on the Mac. Gmail needs a Google sign-in set up first, so it is not here yet.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

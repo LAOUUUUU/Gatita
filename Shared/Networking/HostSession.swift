@@ -10,9 +10,12 @@ import Foundation
 import MultipeerConnectivity
 import Observation
 
+#if os(iOS) || os(visionOS)
+import UIKit
+#endif
+
 #if os(iOS)
 import WatchConnectivity
-import UIKit
 #endif
 
 @Observable
@@ -33,10 +36,10 @@ final class HostSession: NSObject {
         tools: ProjectTools.fromEnvironment())
 
     override init() {
-        #if os(iOS)
-        let peerID = MCPeerID(displayName: UIDevice.current.name)
-        #else
+        #if os(macOS)
         let peerID = MCPeerID(displayName: Host.current().name ?? "Gatita Host")
+        #else
+        let peerID = MCPeerID(displayName: UIDevice.current.name)
         #endif
         self.peerID = peerID
         self.mcSession = MCSession(peer: peerID, securityIdentity: nil, encryptionPreference: .required)
@@ -55,10 +58,19 @@ final class HostSession: NSObject {
         #endif
     }
 
-    private func handlePrompt(_ text: String, from source: String) async -> String {
+    /// Sends one message to a client. MCSession can be used from any thread.
+    nonisolated static func send(_ message: RemoteMessage, to peer: MCPeerID, through session: MCSession) {
+        guard let data = try? JSONEncoder().encode(message) else { return }
+        try? session.send(data, toPeers: [peer], with: .reliable)
+    }
+
+    /// Answers one prompt. `onPiece` gets each piece of the reply as Gatita writes it.
+    private func handlePrompt(_ text: String, from source: String, onPiece: (String) -> Void) async -> String {
         receivedPrompts.append("[\(source)] \(text)")
         do {
-            let reply = try await client.send(messages: [ChatMessage(role: "user", content: text)])
+            let reply = try await client.stream(messages: [ChatMessage(role: "user", content: text)]) { event in
+                if case .text(let piece) = event { onPiece(piece) }
+            }
             lastResponse = reply
             return reply
         } catch {
@@ -78,10 +90,10 @@ extension HostSession: MCSessionDelegate {
         guard let message = try? JSONDecoder().decode(RemoteMessage.self, from: data),
               case .prompt(let text, _) = message else { return }
         Task { @MainActor in
-            let reply = await self.handlePrompt(text, from: peerID.displayName)
-            if let responseData = try? JSONEncoder().encode(RemoteMessage.response(text: reply)) {
-                try? session.send(responseData, toPeers: [peerID], with: .reliable)
+            let reply = await self.handlePrompt(text, from: peerID.displayName) { piece in
+                Self.send(.chunk(text: piece), to: peerID, through: session)
             }
+            Self.send(.response(text: reply), to: peerID, through: session)
         }
     }
 
@@ -112,7 +124,7 @@ extension HostSession: WCSessionDelegate {
                              replyHandler: @escaping ([String: Any]) -> Void) {
         guard let text = message["prompt"] as? String else { return }
         Task { @MainActor in
-            let reply = await self.handlePrompt(text, from: "Watch")
+            let reply = await self.handlePrompt(text, from: "Watch") { _ in }
             replyHandler(["response": reply])
         }
     }

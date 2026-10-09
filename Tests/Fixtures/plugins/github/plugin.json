@@ -1,0 +1,28 @@
+{
+  "name": "github",
+  "description": "Local git history and diff helpers for a GitHub repo. The sandbox blocks network, so GitHub itself is not reachable.",
+  "skills": [
+    {
+      "id": "commit-message",
+      "name": "Commit message",
+      "instructions": "Write a commit message for the current changes. First call git_status and git_diff. Then run git diff --staged --stat with run_command, or git diff --stat if nothing is staged. Use a short imperative subject under 72 characters, and add a body only if the change needs explaining. Do not commit."
+    },
+    {
+      "id": "history",
+      "name": "Recent history",
+      "instructions": "Summarize recent work. Run git log --oneline -20 with run_command, group the commits by theme, and name the main files they touched."
+    },
+    {
+      "id": "pr-description",
+      "name": "PR description",
+      "instructions": "Write a pull request description for the current branch. Run git branch --show-current, git log --oneline main..HEAD, and git diff --stat main...HEAD with run_command. Give a summary, a list of changes, and how to test. Do not try to open the PR, because GitHub is not reachable from the sandbox."
+    }
+  ],
+  "commands": [
+    "git status",
+    "git branch --show-current",
+    "git log --oneline",
+    "git diff --stat",
+    "git diff --staged --stat"
+  ]
+}

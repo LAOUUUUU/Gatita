@@ -13,7 +13,8 @@ nonisolated struct ProjectTools: Sendable {
     static let maxListDepth = 4
     static let maxSearchHits = 200
 
-    let root: URL
+    /// The project folder. Nil on hosts without one, where every file tool and command is refused.
+    let root: URL?
     let allowWrites: Bool
     let allowCommands: Bool
     let commands: [[String]]
@@ -21,13 +22,13 @@ nonisolated struct ProjectTools: Sendable {
     /// Connectors whose tools are on for this set of tools.
     let connectors: Set<String>
 
-    init(root: URL,
+    init(root: URL?,
          allowWrites: Bool,
          allowCommands: Bool = false,
          commands: [[String]] = CommandPolicy.builtIn,
          logDirectory: URL? = nil,
          connectors: Set<String> = []) {
-        self.root = root.standardizedFileURL.resolvingSymlinksInPath()
+        self.root = root?.standardizedFileURL.resolvingSymlinksInPath()
         self.allowWrites = allowWrites
         self.allowCommands = allowCommands
         self.commands = commands
@@ -46,40 +47,54 @@ nonisolated struct ProjectTools: Sendable {
     }
 
     /// System message that explains the <gatita-tool> block format and the tools on offer.
+    /// Hosts without a project folder are told only about the tools they can run.
     var instructions: String {
+        let hasFolder = root != nil
         var lines = [
-            "You can work with files in the project by writing tool blocks. To call a tool, write exactly one block in this form, then stop:",
-            "<gatita-tool>{\"tool\": \"list_files\", \"path\": \".\"}</gatita-tool>",
+            "You can use tools by writing tool blocks. To call a tool, write exactly one block in this form, then stop:",
+            hasFolder
+                ? "<gatita-tool>{\"tool\": \"list_files\", \"path\": \".\"}</gatita-tool>"
+                : "<gatita-tool>{\"tool\": \"list_reports\"}</gatita-tool>",
             "The result comes back in your next message inside <gatita-tool-result> tags. Never invent results. When you have what you need, answer normally without tool blocks.",
             "If a tool or a reply fails, call list_reports, then read_report on the newest failure, before trying a fix.",
             "",
             "Tools:",
-            "- list_files: {\"tool\": \"list_files\", \"path\": \"<folder, or . for the project root>\"} lists files and folders up to 4 levels deep.",
-            "- read_file: {\"tool\": \"read_file\", \"path\": \"<file>\"} reads a text file.",
-            "- search_text: {\"tool\": \"search_text\", \"query\": \"<text>\"} finds lines containing the text, as path:line:text, up to 200 hits.",
-            "- git_status: {\"tool\": \"git_status\"} lists changed files in the project's git repository.",
-            "- git_diff: {\"tool\": \"git_diff\", \"path\": \"<optional file>\"} shows uncommitted changes.",
+        ]
+        if hasFolder {
+            lines += [
+                "- list_files: {\"tool\": \"list_files\", \"path\": \"<folder, or . for the project root>\"} lists files and folders up to 4 levels deep.",
+                "- read_file: {\"tool\": \"read_file\", \"path\": \"<file>\"} reads a text file.",
+                "- search_text: {\"tool\": \"search_text\", \"query\": \"<text>\"} finds lines containing the text, as path:line:text, up to 200 hits.",
+                "- git_status: {\"tool\": \"git_status\"} lists changed files in the project's git repository.",
+                "- git_diff: {\"tool\": \"git_diff\", \"path\": \"<optional file>\"} shows uncommitted changes.",
+            ]
+        }
+        lines += [
             "- list_reports: {\"tool\": \"list_reports\"} lists failure reports and the app log.",
             "- read_report: {\"tool\": \"read_report\", \"name\": \"<a name from list_reports>\"} reads one failure report or the log.",
             "- ask_user: {\"tool\": \"ask_user\", \"question\": \"<question>\"} asks the user something you need. Make it the last thing in your reply, then wait for their answer.",
         ]
         #if os(macOS)
-        lines.append("- web_check: {\"tool\": \"web_check\", \"path\": \"<html file>\"} loads a local page at phone and desktop widths and reports layout and content problems.")
+        if hasFolder {
+            lines.append("- web_check: {\"tool\": \"web_check\", \"path\": \"<html file>\"} loads a local page at phone and desktop widths and reports layout and content problems.")
+        }
         #endif
         for connector in Connectors.catalog where connectors.contains(connector.id) {
             lines.append(contentsOf: Connectors.toolHelp(for: connector))
         }
-        if allowCommands {
-            let allowedList = commands.map { $0.joined(separator: " ") }.joined(separator: ", ")
-            lines.append("- run_command: {\"tool\": \"run_command\", \"command\": \"<command>\"} runs one allowed command in the project, with no network and writes only inside the project. Allowed: \(allowedList).")
+        if hasFolder {
+            if allowCommands {
+                let allowedList = commands.map { $0.joined(separator: " ") }.joined(separator: ", ")
+                lines.append("- run_command: {\"tool\": \"run_command\", \"command\": \"<command>\"} runs one allowed command in the project, with no network and writes only inside the project. Allowed: \(allowedList).")
+            }
+            if allowWrites {
+                lines.append("- write_file: {\"tool\": \"write_file\", \"path\": \"<file>\", \"content\": \"<full file content>\"} creates or overwrites a file.")
+                lines.append("- edit_file: {\"tool\": \"edit_file\", \"path\": \"<file>\", \"old_text\": \"<exact text>\", \"new_text\": \"<replacement>\"} replaces one exact occurrence; old_text must appear exactly once.")
+            } else {
+                lines.append("Writing files is turned off, so do not call write_file or edit_file.")
+            }
+            lines.append("Paths are relative to the project root. Do not use absolute paths or touch .git.")
         }
-        if allowWrites {
-            lines.append("- write_file: {\"tool\": \"write_file\", \"path\": \"<file>\", \"content\": \"<full file content>\"} creates or overwrites a file.")
-            lines.append("- edit_file: {\"tool\": \"edit_file\", \"path\": \"<file>\", \"old_text\": \"<exact text>\", \"new_text\": \"<replacement>\"} replaces one exact occurrence; old_text must appear exactly once.")
-        } else {
-            lines.append("Writing files is turned off, so do not call write_file or edit_file.")
-        }
-        lines.append("Paths are relative to the project root. Do not use absolute paths or touch .git.")
         return lines.joined(separator: "\n")
     }
 
@@ -133,6 +148,7 @@ nonisolated struct ProjectTools: Sendable {
     // MARK: - Tools
 
     private func listFiles(_ relative: String) throws -> String {
+        let root = try folder()
         let base = try resolve(relative)
         guard let walker = FileManager.default.enumerator(at: base, includingPropertiesForKeys: [.isDirectoryKey]) else {
             throw ToolError("cannot list \(relative)")
@@ -197,7 +213,7 @@ nonisolated struct ProjectTools: Sendable {
 
     /// The project as a tree for the file list. Folders come before files, and .git is left out.
     func tree() throws -> [FileNode] {
-        try nodes(in: root, relativeTo: "", depth: 1)
+        try nodes(in: try folder(), relativeTo: "", depth: 1)
     }
 
     /// Text of one project file, for showing in the app. Same path rules as read_file.
@@ -234,7 +250,7 @@ nonisolated struct ProjectTools: Sendable {
     private func searchText(_ query: String) throws -> String {
         guard !query.isEmpty else { throw ToolError("query is empty") }
         var hits: [String] = []
-        try searchFolder(root, relativeTo: "", query: query, hits: &hits)
+        try searchFolder(try folder(), relativeTo: "", query: query, hits: &hits)
         return hits.isEmpty ? "(no matches)" : hits.joined(separator: "\n")
     }
 
@@ -260,6 +276,7 @@ nonisolated struct ProjectTools: Sendable {
 #if os(macOS)
     /// Runs one read-only git command in the project folder. Only the fixed commands above reach here.
     private func git(_ arguments: [String]) throws -> String {
+        let root = try folder()
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
         process.arguments = ["-C", root.path, "--no-pager"] + arguments
@@ -300,7 +317,7 @@ nonisolated struct ProjectTools: Sendable {
             do {
                 let args = try JSONDecoder().decode([String: String].self, from: Data(arguments.utf8))
                 let file = try resolve(try required(args, "path"))
-                return try await WebCheck.check(file: file, root: root)
+                return try await WebCheck.check(file: file, root: try folder())
             } catch {
                 return "error: \(error.localizedDescription)"
             }
@@ -333,7 +350,7 @@ nonisolated struct ProjectTools: Sendable {
 
     private func runCommand(_ arguments: [String]) throws -> String {
         #if os(macOS)
-        return try CommandRunner.run(arguments, in: root)
+        return try CommandRunner.run(arguments, in: try folder())
         #else
         throw ToolError("commands can only run on the Mac host")
         #endif
@@ -341,6 +358,7 @@ nonisolated struct ProjectTools: Sendable {
 
     /// Turns a model-supplied relative path into a URL inside the project, or throws.
     func resolve(_ relative: String) throws -> URL {
+        let root = try folder()
         guard !relative.hasPrefix("/") else { throw ToolError("path must be relative to the project: \(relative)") }
         let url = root.appendingPathComponent(relative).standardizedFileURL.resolvingSymlinksInPath()
         let prefix = root.path.hasSuffix("/") ? root.path : root.path + "/"
@@ -354,6 +372,12 @@ nonisolated struct ProjectTools: Sendable {
     private func required(_ args: [String: String], _ key: String) throws -> String {
         guard let value = args[key] else { throw ToolError("missing argument \(key)") }
         return value
+    }
+
+    /// The project folder, or an error on a host that has none.
+    private func folder() throws -> URL {
+        guard let root else { throw ToolError("project files are only available on the Mac host") }
+        return root
     }
 
     private func requireWrites() throws {

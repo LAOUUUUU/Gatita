@@ -103,16 +103,17 @@ final class ChatViewModel {
         makeTools(connectors: connectors)
     }
 
-    /// Project tools with the given connectors on.
+    /// Project tools with the given connectors on. A host with no project folder still gets the connectors it can run.
     private func makeTools(connectors enabled: Set<String>) -> ProjectTools? {
-        let path = projectRoot.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !path.isEmpty else { return nil }
-        return ProjectTools(root: URL(fileURLWithPath: (path as NSString).expandingTildeInPath),
-                            allowWrites: allowWrites,
-                            allowCommands: allowCommands,
+        let folder = HostPolicy.projectRoot(projectRoot)
+        let connectorsOn = HostPolicy.connectors(enabled)
+        guard folder != nil || !connectorsOn.isEmpty else { return nil }
+        return ProjectTools(root: folder,
+                            allowWrites: folder != nil && allowWrites,
+                            allowCommands: folder != nil && allowCommands,
                             commands: CommandPolicy.builtIn + plugins.commands,
                             logDirectory: log.directory,
-                            connectors: enabled)
+                            connectors: connectorsOn)
     }
 
     /// Rereads the plugin folders, so a new plugin shows up without relaunching.
@@ -256,7 +257,7 @@ final class ChatViewModel {
             }
         }
         for name in Composer.pluginMentions(in: text) {
-            if let connector = Connectors.connector(named: name) {
+            if let connector = Connectors.connector(named: name), HostPolicy.allows(connector) {
                 parts.append("Connector \(connector.name) is on for this message. Tools: \(connector.tools.joined(separator: ", ")).")
             } else if let plugin = plugins.details.first(where: { $0.name == name }) {
                 parts.append("Plugin \(plugin.name): \(plugin.description) Skills: \(plugin.skillNames.joined(separator: ", ")). Commands: \(plugin.commands.joined(separator: ", ")).")
