@@ -137,7 +137,7 @@ final class GatitaClient {
             }
 
             // ask_user is not a tool: it hands the question to the user and ends the turn.
-            if Self.toolName(in: block) == "ask_user" {
+            if Self.toolName(in: block) == "ask_user", tools.allowsReports {
                 onEvent(.question(Self.field("question", in: block) ?? ""))
                 return turn.visible
             }

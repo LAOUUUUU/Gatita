@@ -30,6 +30,10 @@ nonisolated enum GatitaMode: String, Codable, CaseIterable, Sendable {
     /// Project files, edits, commands, and plugin commands are for Code only.
     var usesProjectTools: Bool { self == .code }
 
+    /// The failure-report and question tools. Code has them, and so does every chat on a host with no project
+    /// (iPhone and iPad), which is always in Chat. A Mac chat does not get them.
+    var usesReportTools: Bool { self == .code || HostPolicy.current == .questionsOnly }
+
     /// Connectors that only read a project. They need Code mode and a project folder.
     private static let projectConnectors: Set<String> = ["github"]
 

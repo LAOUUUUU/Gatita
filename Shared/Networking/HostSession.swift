@@ -18,6 +18,8 @@ import UIKit
 import WatchConnectivity
 #endif
 
+/// Answers chats sent from paired devices. A host uses its own Gatita key and no project tools,
+/// so a paired phone or iPad can ask questions but cannot edit files or run commands on this device.
 @Observable
 @MainActor
 final class HostSession: NSObject {
@@ -27,13 +29,11 @@ final class HostSession: NSObject {
 
     private let serviceType = "gatita-host"
     private let peerID: MCPeerID
+    /// The app's settings: the Gatita key, the model, and the pairing code. Set when the window appears.
+    private var viewModel: ChatViewModel?
 
     nonisolated private let mcSession: MCSession
     nonisolated private let advertiser: MCNearbyServiceAdvertiser
-
-    private let client = GatitaClient(
-        apiKey: ProcessInfo.processInfo.environment["GATITA_API_KEY"] ?? "",
-        tools: ProjectTools.fromEnvironment())
 
     override init() {
         #if os(macOS)
@@ -58,6 +58,17 @@ final class HostSession: NSObject {
         #endif
     }
 
+    /// Connects the host to the app's settings. Called when the window appears.
+    func attach(_ viewModel: ChatViewModel) {
+        self.viewModel = viewModel
+    }
+
+    /// Whether an invitation may pair. Pairing must be open, the code must be set, and the invitation must carry it.
+    nonisolated static func accepts(_ context: Data?, pairingCode: String, pairingOpenUntil: Date?, now: Date = Date()) -> Bool {
+        guard let until = pairingOpenUntil, now < until else { return false }
+        return !pairingCode.isEmpty && context == Data(pairingCode.utf8)
+    }
+
     /// Sends one message to a client. MCSession can be used from any thread.
     nonisolated static func send(_ message: RemoteMessage, to peer: MCPeerID, through session: MCSession) {
         guard let data = try? JSONEncoder().encode(message) else { return }
@@ -67,6 +78,19 @@ final class HostSession: NSObject {
     /// Answers one prompt. `onPiece` gets each piece of the reply as Gatita writes it.
     private func handlePrompt(_ text: String, from source: String, onPiece: (String) -> Void) async -> String {
         receivedPrompts.append("[\(source)] \(text)")
+        guard let viewModel else {
+            let message = "Error: this Mac is not ready yet."
+            lastResponse = message
+            return message
+        }
+        let key = viewModel.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else {
+            let message = "Error: this Mac has no Gatita key yet. Add it in Settings."
+            lastResponse = message
+            return message
+        }
+        // No tools: a paired device gets answers, not access to this device's files.
+        let client = GatitaClient(apiKey: key, model: viewModel.model)
         do {
             let reply = try await client.stream(messages: [ChatMessage(role: "user", content: text)]) { event in
                 if case .text(let piece) = event { onPiece(piece) }
@@ -107,7 +131,11 @@ extension HostSession: MCNearbyServiceAdvertiserDelegate {
                                 didReceiveInvitationFromPeer peerID: MCPeerID,
                                 withContext context: Data?,
                                 invitationHandler: @escaping (Bool, MCSession?) -> Void) {
-        invitationHandler(true, mcSession)
+        Task { @MainActor in
+            let accepted = HostSession.accepts(context, pairingCode: self.viewModel?.remoteCode ?? "",
+                                               pairingOpenUntil: self.viewModel?.pairingOpenUntil)
+            invitationHandler(accepted, accepted ? self.mcSession : nil)
+        }
     }
 }
 

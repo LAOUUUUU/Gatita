@@ -1,0 +1,48 @@
+//
+//  RemoteTests.swift
+//  GatitaTests
+//
+
+import XCTest
+@testable import Gatita
+
+/// Chats sent between paired devices: the pairing rule, the message on the wire, and the saved setting.
+final class RemoteTests: XCTestCase {
+    private let open = Date().addingTimeInterval(300)
+
+    func testADeviceWithTheRightCodeIsAcceptedWhilePairingIsOpen() {
+        XCTAssertTrue(HostSession.accepts(Data("1234".utf8), pairingCode: "1234", pairingOpenUntil: open))
+    }
+
+    func testAWrongOrMissingCodeIsRefused() {
+        XCTAssertFalse(HostSession.accepts(Data("9999".utf8), pairingCode: "1234", pairingOpenUntil: open))
+        XCTAssertFalse(HostSession.accepts(nil, pairingCode: "1234", pairingOpenUntil: open))
+    }
+
+    func testNothingPairsWhilePairingIsClosedOrExpired() {
+        XCTAssertFalse(HostSession.accepts(Data("1234".utf8), pairingCode: "1234", pairingOpenUntil: nil))
+        XCTAssertFalse(HostSession.accepts(Data("1234".utf8), pairingCode: "1234", pairingOpenUntil: Date().addingTimeInterval(-1)))
+    }
+
+    func testWithNoCodeSetNoDeviceGetsIn() {
+        XCTAssertFalse(HostSession.accepts(Data("".utf8), pairingCode: "", pairingOpenUntil: open))
+        XCTAssertFalse(HostSession.accepts(Data("1234".utf8), pairingCode: "", pairingOpenUntil: open))
+    }
+
+    func testAChatSurvivesTheWire() throws {
+        let data = try JSONEncoder().encode(RemoteMessage.prompt(text: "hi", clientName: "iPad"))
+        guard case .prompt(let text, let name)? = try? JSONDecoder().decode(RemoteMessage.self, from: data) else {
+            return XCTFail("the chat did not decode as a prompt")
+        }
+        XCTAssertEqual(text, "hi")
+        XCTAssertEqual(name, "iPad")
+    }
+
+    func testSendingToAPairedDeviceIsSaved() throws {
+        var settings = AppSettings()
+        XCTAssertFalse(settings.sendToMac)
+        settings.sendToMac = true
+        let loaded = try JSONDecoder().decode(AppSettings.self, from: try JSONEncoder().encode(settings))
+        XCTAssertTrue(loaded.sendToMac)
+    }
+}

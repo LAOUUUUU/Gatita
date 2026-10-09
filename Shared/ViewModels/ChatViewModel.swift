@@ -31,6 +31,32 @@ final class ChatViewModel {
     private(set) var plugins = Plugins.load(from: Plugins.defaultDirectory)
     /// Background commands and subagents started in this run of the app. Shown in the activity panel.
     let tasks = TaskRegistry()
+    /// On iPhone and iPad, send chats to a paired Mac or other device instead of Gatita. Saved in the settings file.
+    var sendToMac: Bool = false {
+        didSet { persistSettings() }
+    }
+    /// Nearby devices running Gatita, for sending chats to one of them.
+    let remoteMac = RemoteMacBrowser()
+    /// The code a device and its pair share. Kept in the Keychain, not in the settings file.
+    var remoteCode: String {
+        didSet { saveRemoteCode() }
+    }
+    /// Until when devices with the code may pair with this device. Nil when pairing is closed.
+    /// Not saved, so pairing closes when the app quits.
+    private(set) var pairingOpenUntil: Date?
+
+    var isPairingOpen: Bool {
+        (pairingOpenUntil ?? .distantPast) > Date()
+    }
+
+    /// Lets devices with the code pair with this device for a few minutes.
+    func openPairing(minutes: Double = 5) {
+        pairingOpenUntil = Date().addingTimeInterval(minutes * 60)
+    }
+
+    func closePairing() {
+        pairingOpenUntil = nil
+    }
 
     var messages: [ChatMessage] = []
     var isSending = false
@@ -113,9 +139,13 @@ final class ChatViewModel {
         self.allowCommands = saved.allowCommands
         self.connectors = Set(saved.connectors)
         self.skillID = saved.skillID
-        self.mode = saved.mode
-        self.sessionMode = saved.mode
+        // Only the Mac has projects, so every other device is always in Chat.
+        let startMode: GatitaMode = HostPolicy.current == .mac ? saved.mode : .chat
+        self.mode = startMode
+        self.sessionMode = startMode
         self.keepAwake = saved.keepAwake
+        self.sendToMac = saved.sendToMac
+        self.remoteCode = KeychainStore.read(account: "remote-code") ?? ""
         self.model = Self.models.contains(saved.model) ? saved.model : Self.models[0]
         self.conversations = ChatHistory.load(from: ChatHistory.defaultFile)
         persistSettings()
@@ -149,7 +179,8 @@ final class ChatViewModel {
                             allowCommands: folder != nil && allowCommands,
                             commands: CommandPolicy.builtIn + plugins.commands,
                             logDirectory: log.directory,
-                            connectors: connectorsOn)
+                            connectors: connectorsOn,
+                            allowsReports: mode.usesReportTools)
     }
 
     /// Rereads the plugin folders, so a new plugin shows up without relaunching.
@@ -182,7 +213,8 @@ final class ChatViewModel {
         }
 
         let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !key.isEmpty else {
+        let viaPairedDevice = sendToMac && HostPolicy.current != .mac
+        guard !key.isEmpty || viaPairedDevice else {
             errorMessage = "Add your Gatita API key in Settings first."
             return
         }
@@ -205,6 +237,10 @@ final class ChatViewModel {
         analytics.count("message_sent")
         log.info("message sent with model \(model) and skill \(skillID)")
         let instructions = skills.first { $0.id == skillID }?.instructions
+        if viaPairedDevice {
+            sendThroughPairedDevice(history.last?.sentText ?? trimmed, replyID: replyID)
+            return
+        }
         let mentionedConnectors = Set(Composer.pluginMentions(in: trimmed).filter { Connectors.connector(named: $0) != nil })
         let client = GatitaClient(apiKey: key, model: model,
                                   tools: makeTools(connectors: connectors.union(mentionedConnectors), mode: mode),
@@ -422,6 +458,38 @@ final class ChatViewModel {
         }
     }
 
+    /// Sends a chat to the connected device, which answers with its own key and no project tools.
+    private func sendThroughPairedDevice(_ prompt: String, replyID: UUID) {
+        sendTask = Task {
+            do {
+                let answer = try await self.remoteMac.ask(prompt) { piece in
+                    self.updateReply(replyID) { $0.content += piece }
+                }
+                self.updateReply(replyID) { $0.content = answer }
+                if self.pendingQuestion == nil { self.finishedReplies += 1 }
+            } catch {
+                self.analytics.count("paired_device_unreachable")
+                self.log.error("could not reach the paired device: \(error.localizedDescription)")
+                self.messages.removeAll { $0.id == replyID && $0.content.isEmpty }
+                self.addErrorBubble("Gatita could not reach your Mac.", detail: error.localizedDescription)
+            }
+            self.updateReply(replyID) { $0.isStreaming = false }
+            self.isSending = false
+            self.sendTask = nil
+            self.saveCurrentChat()
+        }
+    }
+
+    /// The pairing code is kept in the Keychain. An empty code removes it.
+    private func saveRemoteCode() {
+        let code = remoteCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        if code.isEmpty {
+            _ = KeychainStore.delete(account: "remote-code")
+        } else {
+            _ = KeychainStore.save(code, account: "remote-code")
+        }
+    }
+
     /// Shows an error as a red message after the latest one. It is not sent back to Gatita.
     private func addErrorBubble(_ headline: String, detail: String? = nil) {
         messages.append(ChatMessage(role: "error", content: headline, errorText: detail))
@@ -494,7 +562,7 @@ final class ChatViewModel {
     /// Writes every remembered setting to the settings file. The API key is never part of it.
     private func persistSettings() {
         SettingsStore.save(AppSettings(projectRoot: projectRoot, model: model, connectors: connectors.sorted(),
-                                       allowWrites: allowWrites, allowCommands: allowCommands, skillID: skillID, mode: mode, keepAwake: keepAwake),
+                                       allowWrites: allowWrites, allowCommands: allowCommands, skillID: skillID, mode: mode, keepAwake: keepAwake, sendToMac: sendToMac),
                            to: SettingsStore.defaultFile)
     }
 

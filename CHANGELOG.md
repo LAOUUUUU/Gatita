@@ -8,6 +8,16 @@ Gatita uses three numbers, MAJOR.MINOR.PATCH, plus a channel while it is not fin
 
 No number resets. Each one keeps counting up, so after 0.0.2, a release with new models is 0.1.3, and a big refactor after that is 1.2.4.
 
+## 0.0.4 alpha
+
+Pairing, the Settings menu, and iPad layout.
+
+- **Pairing.** On the Mac, set a code in Settings, then press "Allow devices for 5 minutes". A phone or iPad with the same code can pair while that window is open. Pairing works on the same Wi-Fi only.
+- **Settings menu.** Settings is a menu with a page for each part: Account, Usage, Pairing, Plugins, Skills, Connectors, About, and Logs. Descriptions wrap instead of being cut off.
+- **iPhone and iPad.** The starter prompts sit in a centered column, and their text wraps instead of running off the screen.
+- **Chat on the Mac.** Chat no longer has the failure-report or question tools. Connectors you turn on still run, so Web pages can read a public page for research.
+- **Prompt rail.** Click a line on the right edge of a conversation to jump to that prompt. The jump and the highlight are animated.
+
 ## 0.0.3 alpha
 
 Fixes for iPhone and iPad.

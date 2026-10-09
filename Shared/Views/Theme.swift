@@ -12,18 +12,44 @@ enum Theme {
     static let surface = Color(white: 0.14)
 }
 
-/// A pill with a thin outline, for the starter prompts.
+/// A pill with a thin outline, for the starter prompts. Phones and tablets get smaller pills,
+/// so the starter prompts fit on one line.
 struct PillButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.callout)
-            .lineLimit(1)
-            .fixedSize()
+            .font(Self.font)
+            // Wrap inside the screen width instead of running past its edge.
+            .fixedSize(horizontal: false, vertical: true)
+            .multilineTextAlignment(.leading)
             .foregroundStyle(.white.opacity(0.85))
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(Capsule().fill(Theme.surface.opacity(configuration.isPressed ? 0.8 : 0.45)))
-            .overlay(Capsule().stroke(Color.white.opacity(0.1)))
+            .padding(.horizontal, Self.horizontalPadding)
+            .padding(.vertical, Self.verticalPadding)
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Theme.surface.opacity(configuration.isPressed ? 0.8 : 0.45)))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Color.white.opacity(0.1)))
+    }
+
+    private static var font: Font {
+        #if os(macOS)
+        return .callout
+        #else
+        return .subheadline
+        #endif
+    }
+
+    private static var horizontalPadding: CGFloat {
+        #if os(macOS)
+        return 14
+        #else
+        return 12
+        #endif
+    }
+
+    private static var verticalPadding: CGFloat {
+        #if os(macOS)
+        return 8
+        #else
+        return 6
+        #endif
     }
 }
 

@@ -31,7 +31,7 @@ The decision is in [001](decisions/001-question-only-hosts.md).
 
 `GatitaMode` (`Shared/Models/GatitaMode.swift`) has two modes.
 
-- **Chat** is regular chat. No project tools, no commands, no plugin commands, and no GitHub. Web reads and calendar stay available.
+- **Chat** is regular chat. No project tools, no commands, no plugin commands, and no GitHub. On the Mac, Chat has no failure-report or question tools (`GatitaMode.usesReportTools`). Connectors you turned on still run, so with Web pages on, a Mac chat can read a public page.
 - **Code** works on a project folder: file reads and edits (when turned on), allowed commands, plugin commands, background tasks, subagents, and GitHub.
 
 A saved chat records the mode it was started in (`Conversation.mode`), and the sidebar lists only the chats of the current mode. Switching modes saves the chat on screen and starts a fresh one (`ChatViewModel.switchMode`). Chats saved before modes existed count as Code.

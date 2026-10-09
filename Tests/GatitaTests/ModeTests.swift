@@ -19,6 +19,19 @@ final class ModeTests: XCTestCase {
         XCTAssertEqual(GatitaMode.code.connectors(["github", "web"], hasProject: true), ["github", "web"])
     }
 
+    func testAChatOnTheMacHasNoReportOrQuestionTools() {
+        XCTAssertFalse(GatitaMode.chat.usesReportTools)
+        XCTAssertTrue(GatitaMode.code.usesReportTools)
+    }
+
+    func testAChatWithAConnectorOffersOnlyThatConnector() {
+        let tools = ProjectTools(root: nil, allowWrites: false, connectors: ["web"], allowsReports: false)
+        XCTAssertFalse(tools.instructions.contains("list_reports"))
+        XCTAssertFalse(tools.instructions.contains("ask_user"))
+        XCTAssertTrue(tools.instructions.contains("web_"))
+        XCTAssertEqual(tools.run(name: "list_reports", arguments: "{}"), "error: unknown tool list_reports")
+    }
+
     func testOtherConnectorsWorkInBothModes() {
         XCTAssertEqual(GatitaMode.chat.connectors(["web", "calendar"], hasProject: false), ["web", "calendar"])
     }

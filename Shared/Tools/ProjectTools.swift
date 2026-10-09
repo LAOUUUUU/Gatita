@@ -23,6 +23,8 @@ nonisolated struct ProjectTools: Sendable {
     let connectors: Set<String>
     /// Whether this set of tools can start subagents. A subagent's own tools cannot.
     let allowsSubagents: Bool
+    /// Whether the failure-report tools and the question tool are offered. Off for a Mac chat.
+    let allowsReports: Bool
 
     init(root: URL?,
          allowWrites: Bool,
@@ -30,7 +32,8 @@ nonisolated struct ProjectTools: Sendable {
          commands: [[String]] = CommandPolicy.builtIn,
          logDirectory: URL? = nil,
          connectors: Set<String> = [],
-         allowsSubagents: Bool = true) {
+         allowsSubagents: Bool = true,
+         allowsReports: Bool = true) {
         self.root = root?.standardizedFileURL.resolvingSymlinksInPath()
         self.allowWrites = allowWrites
         self.allowCommands = allowCommands
@@ -38,6 +41,7 @@ nonisolated struct ProjectTools: Sendable {
         self.logDirectory = logDirectory
         self.connectors = connectors
         self.allowsSubagents = allowsSubagents
+        self.allowsReports = allowsReports
     }
 
     /// Background commands need a project folder and running commands turned on.
@@ -48,7 +52,8 @@ nonisolated struct ProjectTools: Sendable {
     /// The same project for a subagent: read-only, with no commands, and no subagents of its own.
     func readOnlyForSubagents() -> ProjectTools {
         ProjectTools(root: root, allowWrites: false, allowCommands: false, commands: commands,
-                     logDirectory: logDirectory, connectors: connectors, allowsSubagents: false)
+                     logDirectory: logDirectory, connectors: connectors, allowsSubagents: false,
+                     allowsReports: allowsReports)
     }
 
     /// Reads GATITA_PROJECT_ROOT (set GATITA_ALLOW_WRITES=1 to allow edits).
@@ -69,12 +74,16 @@ nonisolated struct ProjectTools: Sendable {
             "You can use tools by writing tool blocks. To call a tool, write exactly one block in this form, then stop:",
             hasFolder
                 ? "<gatita-tool>{\"tool\": \"list_files\", \"path\": \".\"}</gatita-tool>"
-                : "<gatita-tool>{\"tool\": \"list_reports\"}</gatita-tool>",
+                : allowsReports
+                    ? "<gatita-tool>{\"tool\": \"list_reports\"}</gatita-tool>"
+                    : "<gatita-tool>{\"tool\": \"web_fetch\", \"url\": \"https://example.com\"}</gatita-tool>",
             "The result comes back in your next message inside <gatita-tool-result> tags. Never invent results. When you have what you need, answer normally without tool blocks.",
-            "If a tool or a reply fails, call list_reports, then read_report on the newest failure, before trying a fix.",
-            "",
-            "Tools:",
         ]
+        if allowsReports {
+            lines.append("If a tool or a reply fails, call list_reports, then read_report on the newest failure, before trying a fix.")
+        }
+        lines.append("")
+        lines.append("Tools:")
         if hasFolder {
             lines += [
                 "- list_files: {\"tool\": \"list_files\", \"path\": \"<folder, or . for the project root>\"} lists files and folders up to 4 levels deep.",
@@ -84,11 +93,13 @@ nonisolated struct ProjectTools: Sendable {
                 "- git_diff: {\"tool\": \"git_diff\", \"path\": \"<optional file>\"} shows uncommitted changes.",
             ]
         }
-        lines += [
-            "- list_reports: {\"tool\": \"list_reports\"} lists failure reports and the app log.",
-            "- read_report: {\"tool\": \"read_report\", \"name\": \"<a name from list_reports>\"} reads one failure report or the log.",
-            "- ask_user: {\"tool\": \"ask_user\", \"question\": \"<question>\"} asks the user something you need. Make it the last thing in your reply, then wait for their answer.",
-        ]
+        if allowsReports {
+            lines += [
+                "- list_reports: {\"tool\": \"list_reports\"} lists failure reports and the app log.",
+                "- read_report: {\"tool\": \"read_report\", \"name\": \"<a name from list_reports>\"} reads one failure report or the log.",
+                "- ask_user: {\"tool\": \"ask_user\", \"question\": \"<question>\"} asks the user something you need. Make it the last thing in your reply, then wait for their answer.",
+            ]
+        }
         #if os(macOS)
         if hasFolder {
             lines.append("- web_check: {\"tool\": \"web_check\", \"path\": \"<html file>\"} loads a local page at phone and desktop widths and reports layout and content problems.")
@@ -141,11 +152,11 @@ nonisolated struct ProjectTools: Sendable {
                     throw ToolError("that command is not on the allowed list, or it uses shell syntax")
                 }
                 return try runCommand(argv)
-            case "list_reports":
+            case "list_reports" where allowsReports:
                 return try listReports()
-            case "read_report":
+            case "read_report" where allowsReports:
                 return try readReport(try required(args, "name"))
-            case "ask_user":
+            case "ask_user" where allowsReports:
                 return "the question was sent to the user; wait for their answer."
             case "search_text":
                 return try searchText(try required(args, "query"))

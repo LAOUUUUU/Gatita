@@ -82,12 +82,9 @@ struct HostChatView: View {
         .background(Theme.background.ignoresSafeArea())
         .navigationTitle("")
         .sheet(isPresented: $showingSettings) {
-            ScrollView {
-                HostSettingsView(viewModel: viewModel)
-                    .padding()
-            }
-            .frame(width: 560, height: 680)
-            .presentationBackground(Theme.background)
+            HostSettingsView(viewModel: viewModel)
+                .frame(width: 560, height: 680)
+                .presentationBackground(Theme.background)
         }
         .sheet(isPresented: $showingShop) {
             ShopView(viewModel: viewModel)
@@ -356,22 +353,38 @@ struct HostChatView: View {
             Text(greeting)
                 .font(.title2)
                 .foregroundStyle(.white.opacity(0.85))
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                ForEach(viewModel.mode == .code ? Self.codeStarters : Self.chatStarters) { item in
-                    Button {
-                        viewModel.draft = item.prompt
-                    } label: {
-                        Label(item.title, systemImage: item.icon)
-                    }
-                    .buttonStyle(PillButtonStyle())
-                }
-                }
-                .padding(.horizontal)
-            }
+            starterChips
             Spacer()
         }
         .padding()
+    }
+
+    /// The starter prompts: a row on the Mac, and a column on iPhone and iPad, so every prompt stays on screen.
+    @ViewBuilder
+    private var starterChips: some View {
+        let items = viewModel.mode == .code ? Self.codeStarters : Self.chatStarters
+        #if os(macOS)
+        HStack(spacing: 10) {
+            ForEach(items) { item in
+                starterButton(item)
+            }
+        }
+        #else
+        VStack(spacing: 8) {
+            ForEach(items) { item in
+                starterButton(item)
+            }
+        }
+        #endif
+    }
+
+    private func starterButton(_ item: Starter) -> some View {
+        Button {
+            viewModel.draft = item.prompt
+        } label: {
+            Label(item.title, systemImage: item.icon)
+        }
+        .buttonStyle(PillButtonStyle())
     }
 
     private var promptCount: Int {
@@ -428,26 +441,37 @@ struct HostChatView: View {
         }
     }
 
-    /// One short line per prompt, stacked in the middle of the right edge.
+    /// One short line per prompt, stacked in the middle of the right edge. Each line is a button with a
+    /// larger hit area than the line, and the accent line moves with an animation as you scroll.
     private func promptRail(proxy: ScrollViewProxy) -> some View {
         let prompts = viewModel.messages.filter { $0.role == "user" }
         let current = currentPrompt(among: prompts)
-        return VStack(spacing: 10) {
+        return VStack(spacing: 4) {
             ForEach(prompts) { prompt in
-                Capsule()
-                    .fill(prompt.id == current ? Theme.accent : Color.white.opacity(0.3))
-                    .frame(width: 16, height: 2)
-                    .padding(.vertical, 3)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        withAnimation {
-                            proxy.scrollTo(prompt.id, anchor: .top)
-                        }
-                    }
+                let isCurrent = prompt.id == current
+                Button {
+                    jump(to: prompt.id, proxy: proxy)
+                } label: {
+                    Capsule()
+                        .fill(isCurrent ? Theme.accent : Color.white.opacity(0.3))
+                        .frame(width: isCurrent ? 22 : 16, height: 2)
+                        .frame(width: 26, height: 18)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(String(prompt.content.prefix(80)))
             }
         }
-        .frame(width: 22)
+        .animation(.easeInOut(duration: 0.25), value: current)
+        .frame(width: 26)
         .frame(maxHeight: .infinity)
+    }
+
+    /// Scrolls the conversation to a prompt, with an animation.
+    private func jump(to id: UUID, proxy: ScrollViewProxy) {
+        withAnimation(.easeInOut(duration: 0.45)) {
+            proxy.scrollTo(id, anchor: .top)
+        }
     }
 
     /// The last prompt that has reached the top of the view, or the first prompt before any has.

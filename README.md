@@ -14,6 +14,7 @@ A SwiftUI chat app for Gatita's API, for Mac, iPhone, iPad, and Apple Vision Pro
 - Attach a text file or a picture (PNG, JPEG, GIF, or WebP up to 4 MB) by dropping it on the prompt box or with the paperclip. Each shows as a card inside the box until you send. Pictures are sent to Gatita as images, which the API docs do not describe yet. On a Mac, a paste of 2,000 characters or more becomes a `Pasted text.md` attachment. Files over 2 MB, folders, and files that are not UTF-8 text are refused.
 - A Shop with free plugins, skills, and connectors bundled with the app.
 - On a Mac, turn on "Keep the Mac awake" in the menu bar or Settings to stop it sleeping on its own while Gatita is open. Closing the lid can still sleep it, and a sleeping Mac cannot run Gatita.
+- Pairing: on a Mac, open Settings, then Pairing, and set a code. Press "Allow devices for 5 minutes" to let a device pair with the Mac, and it closes by itself. On the phone or iPad, enter the same code, pick the Mac under Nearby, and connect. Pairing works only on the same local network, and only while the Mac allows it. A paired device sends chats to the Mac, which answers with its own key and no project tools.
 - Logs, analytics, and failure reports stay on your device.
 
 ## Build
@@ -46,7 +47,7 @@ A plugin is a folder with a `plugin.json` in `~/Library/Application Support/Gati
 
 ## Versions
 
-Gatita is an alpha, version 0.0.1. The version has three numbers, MAJOR.MINOR.PATCH:
+Gatita is an alpha, version 0.0.4. The version has three numbers, MAJOR.MINOR.PATCH:
 
 - **MAJOR** (first number): a big refactor or a huge update.
 - **MINOR** (second number): new models.
@@ -55,6 +56,16 @@ Gatita is an alpha, version 0.0.1. The version has three numbers, MAJOR.MINOR.PA
 No number resets. Each one keeps counting up, so after 0.0.2, a release with new models is 0.1.3, and a big refactor after that is 1.2.4.
 
 The version shows in Settings, under About. Each release is listed in [CHANGELOG.md](CHANGELOG.md). When the version changes, set the version in Xcode (MARKETING_VERSION) and add the changelog entry in the same commit. A test fails if the newest changelog entry does not match the app version.
+
+## Releases
+
+`scripts/release.py` bumps the version and builds the release files: the macOS zip, the iPhone and iPad `.ipa`, checksums, and a Sideloadly guide, in `~/Documents/Gatita-releases/<version>-alpha/`.
+
+```bash
+python3 scripts/release.py release 0.0.5
+```
+
+Use `bump` to change only the version, and `build` to rebuild the current version after a fix. Run `python3 scripts/release.py --help` for the options. The script does not commit, tag, or publish. Add the changelog entry before you build.
 
 ## Tests
 

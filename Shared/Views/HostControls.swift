@@ -128,6 +128,8 @@ struct HostInputBar: View {
                 .buttonStyle(.plain)
                 .help("Attach a file")
 
+                // "@" mentions project files, and only the Mac has a project folder.
+                #if os(macOS)
                 Button {
                     draft.wrappedValue += "@"
                 } label: {
@@ -138,6 +140,7 @@ struct HostInputBar: View {
                 }
                 .buttonStyle(.plain)
                 .help("Mention a project file")
+                #endif
 
                 chipButton(.skill) {
                     HStack(spacing: 3) {
@@ -403,142 +406,5 @@ struct HostInputBar: View {
         let text = viewModel.draft
         viewModel.draft = ""
         viewModel.send(text)
-    }
-}
-
-/// Key, project, plugin, and logging settings for a host device. The key is saved in the Keychain.
-struct HostSettingsView: View {
-    @Bindable var viewModel: ChatViewModel
-
-    private var analyticsSummary: String {
-        let counts = viewModel.analytics.summary().sorted { $0.key < $1.key }
-        return counts.isEmpty ? "No events yet." : counts.map { "\($0.key): \($0.value)" }.joined(separator: "   ")
-    }
-
-    private func connectorBinding(_ id: String) -> Binding<Bool> {
-        Binding(
-            get: { viewModel.connectors.contains(id) },
-            set: { isOn in
-                if isOn { viewModel.connectors.insert(id) } else { viewModel.connectors.remove(id) }
-            })
-    }
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Settings are saved in settings.json. The API key is saved in the Keychain, not in that file.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Card("Gatita") {
-                    SecureField("Paste your API key", text: $viewModel.apiKey)
-                        .textFieldStyle(.roundedBorder)
-                    Button("Forget saved key", role: .destructive) {
-                        viewModel.apiKey = ""
-                    }
-                    .disabled(viewModel.apiKey.isEmpty)
-                }
-
-                #if os(macOS)
-                Card("Project") {
-                    TextField("e.g. ~/Documents/Gatita", text: $viewModel.projectRoot)
-                        .textFieldStyle(.roundedBorder)
-                    Toggle("Let Gatita edit files in the project", isOn: $viewModel.allowWrites)
-                    Toggle("Let Gatita run allowed commands (sandboxed, no network)", isOn: $viewModel.allowCommands)
-                    Toggle("Keep the Mac awake while Gatita is open", isOn: $viewModel.keepAwake)
-                }
-                #else
-                Card("Project") {
-                    Text("Project files, edits, and commands are on the Mac. Here Gatita answers questions and reads public web pages.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                #endif
-
-                Card("Connectors") {
-                    ForEach(Connectors.catalog.filter { HostPolicy.allows($0) }) { connector in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Toggle("!\(connector.id)  \(connector.name)", isOn: connectorBinding(connector.id))
-                            Text(connector.summary)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    Text("GitHub uses your gh login on the Mac. Gmail needs a Google sign-in set up first, so it is not here yet.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Card("Plugins") {
-                    if viewModel.plugins.details.isEmpty {
-                        Text("No plugins loaded. Add a folder with a plugin.json to \(Plugins.defaultDirectory.path), then press Reload.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    ForEach(viewModel.plugins.details) { plugin in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("!\(plugin.name)")
-                                .font(.callout.weight(.medium))
-                            Text(plugin.description)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text("Skills: " + plugin.skillNames.joined(separator: ", "))
-                                .font(.caption)
-                            if !plugin.commands.isEmpty {
-                                Text("Commands: " + plugin.commands.joined(separator: ", "))
-                                    .font(.caption.monospaced())
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                    HStack {
-                        Button("Reload plugins") {
-                            viewModel.reloadPlugins()
-                        }
-                        .buttonStyle(.bordered)
-                        #if os(macOS)
-                        Button("Open plugins folder") {
-                            try? FileManager.default.createDirectory(at: Plugins.defaultDirectory, withIntermediateDirectories: true)
-                            NSWorkspace.shared.open(Plugins.defaultDirectory)
-                        }
-                        .buttonStyle(.bordered)
-                        #endif
-                    }
-                }
-
-                Card("About") {
-                    Text("Gatita \(AppVersion.display)")
-                        .font(.callout.weight(.medium))
-                    Text("Versions go MAJOR.MINOR.PATCH: a big refactor, then new models, then updates and fixes. No number resets. See CHANGELOG.md.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Card("Logs and analytics") {
-                    Text("Stay on this Mac.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(analyticsSummary)
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.secondary)
-                    #if os(macOS)
-                    HStack {
-                        Button("Open logs folder") {
-                            NSWorkspace.shared.open(AppLog.defaultDirectory)
-                        }
-                        .buttonStyle(.bordered)
-                        Button("Open settings folder") {
-                            NSWorkspace.shared.open(SettingsStore.defaultFile.deletingLastPathComponent())
-                        }
-                        .buttonStyle(.bordered)
-                    }
-                    #endif
-                }
-            }
-            .padding()
-            .frame(maxWidth: 640, alignment: .leading)
-            .frame(maxWidth: .infinity)
-        }
-        .background(Theme.background)
     }
 }

@@ -34,7 +34,7 @@ struct GatitaApp: App {
             #if os(watchOS)
             ChatView(viewModel: chatViewModel, clientSession: nil)
             #elseif os(iOS) || os(macOS) || os(visionOS)
-            HostRootView(viewModel: chatViewModel)
+            HostRootView(viewModel: chatViewModel, host: hostSession)
             #else
             ChatView(viewModel: chatViewModel, clientSession: clientSession)
             #endif
