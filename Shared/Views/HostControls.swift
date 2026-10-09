@@ -392,6 +392,14 @@ struct HostSettingsView: View {
                     }
                 }
 
+                Card("About") {
+                    Text("Gatita \(AppVersion.display)")
+                        .font(.callout.weight(.medium))
+                    Text("Versions go MAJOR.MINOR.PATCH: a big refactor, then new models, then updates and fixes. No number resets. See CHANGELOG.md.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 Card("Logs and analytics") {
                     Text("Stay on this Mac.")
                         .font(.caption)

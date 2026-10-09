@@ -40,6 +40,18 @@ A plugin is a folder with a `plugin.json` in `~/Library/Application Support/Gati
 - Connectors only read. Calendar reads events and never changes them.
 - Creating a pull request runs git and gh only after you confirm.
 
+## Versions
+
+Gatita is an alpha, version 0.0.1. The version has three numbers, MAJOR.MINOR.PATCH:
+
+- **MAJOR** (first number): a big refactor or a huge update.
+- **MINOR** (second number): new models.
+- **PATCH** (third number): updates, bug fixes, and small changes.
+
+No number resets. Each one keeps counting up, so after 0.0.2, a release with new models is 0.1.3, and a big refactor after that is 1.2.4.
+
+The version shows in Settings, under About. Each release is listed in [CHANGELOG.md](CHANGELOG.md). When the version changes, set the version in Xcode (MARKETING_VERSION) and add the changelog entry in the same commit. A test fails if the newest changelog entry does not match the app version.
+
 ## Tests
 
 Run the unit tests on the Mac:
