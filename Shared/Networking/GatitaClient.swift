@@ -64,6 +64,12 @@ final class GatitaClient {
                 return turn.visible
             }
 
+            // ask_user is not a tool: it hands the question to the user and ends the turn.
+            if Self.toolName(in: block) == "ask_user" {
+                onEvent(.question(Self.field("question", in: block) ?? ""))
+                return turn.visible
+            }
+
             // The model's words before the block, then the block itself, as it wrote them.
             history.append(WireMessage(role: "assistant",
                                        content: turn.visible + Self.openTag + block + Self.closeTag))
@@ -170,6 +176,12 @@ final class GatitaClient {
         return 0
     }
 
+    /// One text field of a tool block, or nil.
+    private static func field(_ name: String, in block: String) -> String? {
+        let fields = try? JSONDecoder().decode([String: String].self, from: Data(block.utf8))
+        return fields?[name]
+    }
+
     /// The "tool" field of a block, or "unknown" when the block is not valid JSON.
     private static func toolName(in block: String) -> String {
         let fields = try? JSONDecoder().decode([String: String].self, from: Data(block.utf8))
@@ -183,6 +195,8 @@ nonisolated enum StreamEvent: Sendable {
     case reasoning(String)
     case toolStarted(id: String, name: String, arguments: String)
     case toolFinished(id: String, name: String, result: String)
+    /// Gatita asked the user something and is waiting for the answer.
+    case question(String)
 }
 
 nonisolated enum GatitaError: LocalizedError {

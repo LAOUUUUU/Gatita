@@ -7,6 +7,9 @@
 
 
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 @main
 struct GatitaApp: App {
@@ -19,8 +22,15 @@ struct GatitaApp: App {
     @State private var chatViewModel = ChatViewModel(
         apiKey: ProcessInfo.processInfo.environment["GATITA_API_KEY"] ?? "")
 
+    init() {
+        #if os(macOS)
+        // Shows the cat in the Dock right away, without waiting for macOS to refresh its icon cache.
+        NSApplication.shared.applicationIconImage = NSImage(named: "AppIconImage")
+        #endif
+    }
+
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: "main") {
             #if os(watchOS)
             ChatView(viewModel: chatViewModel, clientSession: nil)
             #elseif os(iOS) || os(macOS)
@@ -29,6 +39,14 @@ struct GatitaApp: App {
             ChatView(viewModel: chatViewModel, clientSession: clientSession)
             #endif
         }
-        .defaultSize(width: 720, height: 640)
+        .defaultSize(width: 1100, height: 720)
+
+        #if os(macOS)
+        MenuBarExtra {
+            MenuBarMenu(viewModel: chatViewModel)
+        } label: {
+            MenuBarLabel(viewModel: chatViewModel)
+        }
+        #endif
     }
 }

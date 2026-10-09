@@ -12,7 +12,7 @@ struct HostRootView: View {
 
     var body: some View {
         TabView {
-            ChatView(viewModel: viewModel, clientSession: nil)
+            HostChatView(viewModel: viewModel)
                 .tabItem { Label("Chat", systemImage: "bubble.left.and.bubble.right") }
 
             ScrollView {
@@ -24,6 +24,9 @@ struct HostRootView: View {
             ShopView(viewModel: viewModel)
                 .tabItem { Label("Shop", systemImage: "bag") }
         }
+        .preferredColorScheme(.dark)
+        .tint(Theme.accent)
+        .background(Theme.background.ignoresSafeArea())
     }
 }
 #endif

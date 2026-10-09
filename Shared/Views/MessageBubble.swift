@@ -15,7 +15,8 @@ struct MessageBubble: View {
         if message.role == "user" {
             Text(message.content)
                 .padding(10)
-                .background(Color.accentColor.opacity(0.2), in: RoundedRectangle(cornerRadius: 12))
+                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18))
+                .frame(maxWidth: 560, alignment: .trailing)
                 .frame(maxWidth: .infinity, alignment: .trailing)
         } else {
             assistantBubble
@@ -46,8 +47,6 @@ struct MessageBubble: View {
                     .foregroundStyle(.red)
             }
         }
-        .padding(10)
-        .background(Color.secondary.opacity(0.15), in: RoundedRectangle(cornerRadius: 12))
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

@@ -1,6 +1,6 @@
 # Gatita
 
-A SwiftUI chat app for Gatita's API, for iPhone and Mac.
+A SwiftUI chat app for Gatita's API, for iPhone and Mac. Hosts run the chat and the tools. Other platforms will be clients. See [ROADMAP.md](ROADMAP.md).
 
 ## What it does
 
@@ -41,4 +41,4 @@ The test harness is not in this repository yet.
 
 ## License
 
-Not chosen yet.
+MIT. See [LICENSE](LICENSE).

@@ -61,6 +61,7 @@ nonisolated struct ProjectTools: Sendable {
             "- git_diff: {\"tool\": \"git_diff\", \"path\": \"<optional file>\"} shows uncommitted changes.",
             "- list_reports: {\"tool\": \"list_reports\"} lists failure reports and the app log.",
             "- read_report: {\"tool\": \"read_report\", \"name\": \"<a name from list_reports>\"} reads one failure report or the log.",
+            "- ask_user: {\"tool\": \"ask_user\", \"question\": \"<question>\"} asks the user something you need. Make it the last thing in your reply, then wait for their answer.",
         ]
         #if os(macOS)
         lines.append("- web_check: {\"tool\": \"web_check\", \"path\": \"<html file>\"} loads a local page at phone and desktop widths and reports layout and content problems.")
@@ -105,6 +106,8 @@ nonisolated struct ProjectTools: Sendable {
                 return try listReports()
             case "read_report":
                 return try readReport(try required(args, "name"))
+            case "ask_user":
+                return "the question was sent to the user; wait for their answer."
             case "search_text":
                 return try searchText(try required(args, "query"))
             case "git_status":

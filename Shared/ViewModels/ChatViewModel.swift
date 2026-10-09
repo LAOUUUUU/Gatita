@@ -33,7 +33,19 @@ final class ChatViewModel {
     var messages: [ChatMessage] = []
     var isSending = false
     var errorMessage: String?
+    /// Replies that finished. Shown by the badge at the top right until it is cleared.
+    var finishedReplies = 0
+    /// A question Gatita asked. Answer it by sending a message.
+    var pendingQuestion: String?
+    /// What the prompt box holds, so the starter prompts can fill it.
+    var draft = ""
+    /// Saved chats. Kept in chats.json on this Mac.
+    private(set) var conversations: [Conversation]
+    /// The saved chat the messages on screen belong to, once it has been saved.
+    private(set) var currentConversationID: UUID?
     private var sendTask: Task<Void, Never>?
+    /// Chats that already have a title, or a title on the way, so each chat is titled once.
+    private var titledChats: Set<UUID> = []
 
     /// Saved in the Keychain; each change is written as you type.
     var apiKey: String {
@@ -82,6 +94,7 @@ final class ChatViewModel {
         self.connectors = Set(saved.connectors)
         self.skillID = saved.skillID
         self.model = Self.models.contains(saved.model) ? saved.model : Self.models[0]
+        self.conversations = ChatHistory.load(from: ChatHistory.defaultFile)
         persistSettings()
     }
 
@@ -118,6 +131,7 @@ final class ChatViewModel {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !isSending else { return }
         errorMessage = nil
+        pendingQuestion = nil
 
         let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !key.isEmpty else {
@@ -144,6 +158,7 @@ final class ChatViewModel {
                 try await client.stream(messages: history) { event in
                     self.apply(event, toReply: replyID)
                 }
+                if self.pendingQuestion == nil { self.finishedReplies += 1 }
             } catch {
                 let cancelled = Task.isCancelled || (error as? URLError)?.code == .cancelled
                 if cancelled {
@@ -156,9 +171,25 @@ final class ChatViewModel {
                     self.updateReply(replyID) { $0.errorText = error.localizedDescription + note }
                 }
             }
+            // A reply with leaked control tokens is not kept. The question stays, so it can be sent again.
+            if let index = self.messages.firstIndex(where: { $0.id == replyID }),
+               ReplyCheck.isCorrupted(self.messages[index].content) {
+                let raw = self.messages[index].content
+                self.messages.remove(at: index)
+                self.analytics.count("reply_garbled")
+                let report = self.recordFailure(kind: "reply-garbled",
+                                                message: "The reply contained control tokens and was dropped.",
+                                                details: ["model: \(self.model)", "sample: \(String(raw.prefix(400)))"])
+                self.errorMessage = "Gatita's reply came back garbled, so it was not kept. Send the message again."
+                    + (report.map { " Report saved: \($0)" } ?? "")
+            }
             self.updateReply(replyID) { $0.isStreaming = false }
             self.isSending = false
             self.sendTask = nil
+            if !self.messages.isEmpty {
+                self.saveCurrentChat()
+                if let id = self.currentConversationID { self.requestTitle(forChat: id) }
+            }
         }
     }
 
@@ -175,11 +206,45 @@ final class ChatViewModel {
         sendTask?.cancel()
     }
 
-    /// Stops any reply in progress and starts a fresh conversation.
-    func clear() {
+    /// Stops any reply in progress, saves the chat on screen, and starts a fresh one.
+    func newChat() {
         stop()
+        saveCurrentChat()
         messages = []
+        currentConversationID = nil
         errorMessage = nil
+    }
+
+    /// Opens a saved chat. The chat on screen is saved first.
+    func openChat(_ id: UUID) {
+        guard let chat = conversations.first(where: { $0.id == id }) else { return }
+        stop()
+        saveCurrentChat()
+        messages = chat.messages
+        currentConversationID = id
+        errorMessage = nil
+        requestTitle(forChat: id)
+    }
+
+    /// Removes a saved chat. If it is the one on screen, the screen goes blank.
+    func deleteChat(_ id: UUID) {
+        conversations.removeAll { $0.id == id }
+        if currentConversationID == id {
+            stop()
+            messages = []
+            currentConversationID = nil
+        }
+        ChatHistory.save(conversations, to: ChatHistory.defaultFile)
+    }
+
+    /// Writes the chat on screen into the history, if it has any messages.
+    func saveCurrentChat() {
+        guard !messages.isEmpty else { return }
+        let id = currentConversationID ?? UUID()
+        currentConversationID = id
+        conversations.removeAll { $0.id == id }
+        conversations.append(Conversation(id: id, updatedAt: Date(), messages: messages))
+        ChatHistory.save(conversations, to: ChatHistory.defaultFile)
     }
 
     /// For each "@path" in a message, the text of that project file; for each "!name", that plugin's summary. Anything else is ignored.
@@ -214,6 +279,10 @@ final class ChatViewModel {
                 analytics.count("tool_error")
                 _ = recordFailure(kind: "tool-\(name)", message: result, details: ["tool: \(name)"])
             }
+        case .question(let text):
+            analytics.count("question")
+            log.info("Gatita asked: \(text)")
+            pendingQuestion = text
         case .text, .reasoning:
             break
         }
@@ -226,11 +295,40 @@ final class ChatViewModel {
                 reply.reasoning += piece
             case .toolStarted(let callID, let name, let arguments):
                 reply.activities.append(ToolActivity(id: callID, name: name, arguments: arguments, result: nil))
+            case .question:
+                break
             case .toolFinished(let callID, _, let result):
                 if let position = reply.activities.firstIndex(where: { $0.id == callID }) {
                     reply.activities[position].result = result
                 }
             }
+        }
+    }
+
+    /// Clears the finished count once the user has seen it.
+    func acknowledgeFinished() {
+        finishedReplies = 0
+    }
+
+    /// Clears the question once the user has read it.
+    func dismissQuestion() {
+        pendingQuestion = nil
+    }
+
+    /// Asks Gatita for a short title for a chat once it has a question and an answer. If that fails, the question stays as the title.
+    private func requestTitle(forChat id: UUID) {
+        guard !titledChats.contains(id),
+              let chat = conversations.first(where: { $0.id == id }),
+              chat.customTitle == nil,
+              chat.messages.contains(where: { $0.role == "assistant" && !$0.content.isEmpty }) else { return }
+        titledChats.insert(id)
+        let prompt = ChatHistory.titlePrompt(messages: chat.messages)
+        Task {
+            guard let reply = try? await self.oneShot(prompt),
+                  let title = ChatHistory.cleanTitle(reply),
+                  let index = self.conversations.firstIndex(where: { $0.id == id }) else { return }
+            self.conversations[index].customTitle = title
+            ChatHistory.save(self.conversations, to: ChatHistory.defaultFile)
         }
     }
 

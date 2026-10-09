@@ -16,14 +16,14 @@ struct ShopView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 Text("Shop")
-                    .font(.title3.weight(.semibold))
+                    .font(.title2.weight(.semibold))
                 Text("Everything here is free and bundled with the app. Adding one shows what it does first.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
 
                 Picker("Category", selection: $category) {
-                    ForEach(ShopCategory.allCases) { category in
-                        Text(category.title).tag(category)
+                    ForEach(ShopCategory.allCases) { option in
+                        Text(option.title).tag(option)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -33,29 +33,7 @@ struct ShopView: View {
                     .foregroundStyle(.secondary)
 
                 ForEach(Shop.items.filter { $0.kind == category.kind }) { item in
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text(item.name)
-                                .font(.headline)
-                            Text(item.kind == .plugin ? "plugin" : "connector")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            if isInstalled(item) {
-                                Button("Remove") { remove(item) }
-                            } else {
-                                Button("Get") { pending = item }
-                            }
-                        }
-                        Text(item.summary)
-                            .font(.callout)
-                        ForEach(Shop.permissions(of: item), id: \.self) { line in
-                            Text("• " + line)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    Divider()
+                    itemRow(item)
                 }
 
                 if !message.isEmpty {
@@ -66,7 +44,9 @@ struct ShopView: View {
             }
             .padding()
             .frame(maxWidth: 640, alignment: .leading)
+            .frame(maxWidth: .infinity)
         }
+        .background(Theme.background)
         .confirmationDialog("Add this?",
                             isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }),
                             titleVisibility: .visible,
@@ -75,6 +55,33 @@ struct ShopView: View {
         } message: { item in
             Text(Shop.permissions(of: item).joined(separator: "\n"))
         }
+    }
+
+    private func itemRow(_ item: ShopItem) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.name)
+                    .font(.headline)
+                Text(item.summary)
+                    .font(.callout)
+                ForEach(Shop.permissions(of: item), id: \.self) { line in
+                    Text("• " + line)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer(minLength: 8)
+            if isInstalled(item) {
+                Button("Remove") { remove(item) }
+                    .buttonStyle(.bordered)
+            } else {
+                Button("Get") { pending = item }
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
     }
 
     private func isInstalled(_ item: ShopItem) -> Bool {

@@ -117,8 +117,9 @@ struct ChatView: View {
             }
             #endif
             Spacer()
+            NotificationBadge(viewModel: viewModel)
             Button {
-                viewModel.clear()
+                viewModel.newChat()
             } label: {
                 Label("New chat", systemImage: "square.and.pencil")
             }

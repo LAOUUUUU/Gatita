@@ -55,7 +55,6 @@ struct ProjectFilesView: View {
                 .listStyle(.sidebar)
             }
         }
-        .frame(width: 240)
         .onAppear(perform: reload)
         .sheet(item: $openedFile) { node in
             if let tools {
