@@ -15,6 +15,8 @@ struct HostChatView: View {
     @State private var showingSettings = false
     @State private var showingShop = false
     @State private var showingActivity = true
+    /// The chat list, shown as a sheet on iPhone and iPad. The chat is the first screen.
+    @State private var showingChats = false
     @State private var promptPositions: [UUID: CGFloat] = [:]
     @State private var scrollOffset: CGFloat = 0
 
@@ -93,10 +95,26 @@ struct HostChatView: View {
                 .presentationBackground(Theme.background)
         }
         #else
-        NavigationSplitView {
-            sidebar
-        } detail: {
+        NavigationStack {
             detail
+                .toolbar {
+                    ToolbarItem(placement: .navigation) {
+                        Button {
+                            showingChats = true
+                        } label: {
+                            Image(systemName: "sidebar.left")
+                        }
+                        .accessibilityLabel("Chats")
+                    }
+                    ToolbarItemGroup {
+                        NotificationBadge(viewModel: viewModel)
+                    }
+                }
+        }
+        .sheet(isPresented: $showingChats) {
+            NavigationStack {
+                sidebar
+            }
         }
         .background(Theme.background)
         #endif
@@ -136,6 +154,7 @@ struct HostChatView: View {
 
             Button {
                 viewModel.newChat()
+                showingChats = false
             } label: {
                 Label("New chat", systemImage: "plus")
                     .frame(maxWidth: .infinity)
@@ -252,7 +271,10 @@ struct HostChatView: View {
         Binding(
             get: { viewModel.currentConversationID },
             set: { id in
-                if let id { viewModel.openChat(id) }
+                if let id {
+                    viewModel.openChat(id)
+                    showingChats = false
+                }
             })
     }
 
@@ -314,12 +336,6 @@ struct HostChatView: View {
             .padding(.top, 12)
             .padding(.trailing, 16)
         }
-        #else
-        .toolbar {
-            ToolbarItemGroup {
-                NotificationBadge(viewModel: viewModel)
-            }
-        }
         #endif
         #if os(macOS)
         .sheet(isPresented: $showingPullRequest) {
@@ -340,7 +356,8 @@ struct HostChatView: View {
             Text(greeting)
                 .font(.title2)
                 .foregroundStyle(.white.opacity(0.85))
-            HStack(spacing: 10) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
                 ForEach(viewModel.mode == .code ? Self.codeStarters : Self.chatStarters) { item in
                     Button {
                         viewModel.draft = item.prompt
@@ -349,6 +366,8 @@ struct HostChatView: View {
                     }
                     .buttonStyle(PillButtonStyle())
                 }
+                }
+                .padding(.horizontal)
             }
             Spacer()
         }

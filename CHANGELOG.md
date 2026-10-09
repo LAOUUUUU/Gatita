@@ -8,6 +8,14 @@ Gatita uses three numbers, MAJOR.MINOR.PATCH, plus a channel while it is not fin
 
 No number resets. Each one keeps counting up, so after 0.0.2, a release with new models is 0.1.3, and a big refactor after that is 1.2.4.
 
+## 0.0.3 alpha
+
+Fixes for iPhone and iPad.
+
+- **Opens on a chat.** The iPhone app opens on a new chat with the input bar. The chats button in the top-left opens the chat list as a sheet.
+- **New chat works on iPhone.** New chat and picking a chat both open that chat.
+- **Starter prompts** scroll sideways on one line instead of wrapping.
+
 ## 0.0.2 alpha
 
 Updates and fixes since 0.0.1.
