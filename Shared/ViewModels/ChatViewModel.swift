@@ -31,30 +31,30 @@ final class ChatViewModel {
     private(set) var plugins = Plugins.load(from: Plugins.defaultDirectory)
     /// Background commands and subagents started in this run of the app. Shown in the activity panel.
     let tasks = TaskRegistry()
-    /// On iPhone and iPad, send chats to a paired Mac or other device instead of Gatita. Saved in the settings file.
-    var sendToMac: Bool = false {
-        didSet { persistSettings() }
-    }
     /// Nearby devices running Gatita, for sending chats to one of them.
     let remoteMac = RemoteMacBrowser()
-    /// The code a device and its pair share. Kept in the Keychain, not in the settings file.
+    /// The code this device types in to pair with a Mac. Kept in the Keychain, not in the settings file.
     var remoteCode: String {
         didSet { saveRemoteCode() }
     }
-    /// Until when devices with the code may pair with this device. Nil when pairing is closed.
+    /// Until when devices may pair with this device. Nil when pairing is closed.
     /// Not saved, so pairing closes when the app quits.
     private(set) var pairingOpenUntil: Date?
+    /// The code for the current pairing window. A new one is made each time pairing opens. Not saved.
+    private(set) var pairingCode: String?
 
     var isPairingOpen: Bool {
         (pairingOpenUntil ?? .distantPast) > Date()
     }
 
-    /// Lets devices with the code pair with this device for a few minutes.
+    /// Opens pairing for a few minutes, with a new code. Devices pair only with that code.
     func openPairing(minutes: Double = 5) {
+        pairingCode = PairingCode.make()
         pairingOpenUntil = Date().addingTimeInterval(minutes * 60)
     }
 
     func closePairing() {
+        pairingCode = nil
         pairingOpenUntil = nil
     }
 
@@ -144,7 +144,6 @@ final class ChatViewModel {
         self.mode = startMode
         self.sessionMode = startMode
         self.keepAwake = saved.keepAwake
-        self.sendToMac = saved.sendToMac
         self.remoteCode = KeychainStore.read(account: "remote-code") ?? ""
         self.model = Self.models.contains(saved.model) ? saved.model : Self.models[0]
         self.conversations = ChatHistory.load(from: ChatHistory.defaultFile)
@@ -213,7 +212,7 @@ final class ChatViewModel {
         }
 
         let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        let viaPairedDevice = sendToMac && HostPolicy.current != .mac
+        let viaPairedDevice = mode == .remote && HostPolicy.current != .mac
         guard !key.isEmpty || viaPairedDevice else {
             errorMessage = "Add your Gatita API key in Settings first."
             return
@@ -562,7 +561,7 @@ final class ChatViewModel {
     /// Writes every remembered setting to the settings file. The API key is never part of it.
     private func persistSettings() {
         SettingsStore.save(AppSettings(projectRoot: projectRoot, model: model, connectors: connectors.sorted(),
-                                       allowWrites: allowWrites, allowCommands: allowCommands, skillID: skillID, mode: mode, keepAwake: keepAwake, sendToMac: sendToMac),
+                                       allowWrites: allowWrites, allowCommands: allowCommands, skillID: skillID, mode: mode, keepAwake: keepAwake),
                            to: SettingsStore.defaultFile)
     }
 

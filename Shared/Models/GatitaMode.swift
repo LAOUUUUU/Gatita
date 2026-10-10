@@ -12,11 +12,14 @@ import Foundation
 nonisolated enum GatitaMode: String, Codable, CaseIterable, Sendable {
     case chat
     case code
+    /// Chats sent to the paired Mac, which answers with its own key and no project tools.
+    case remote
 
     var displayName: String {
         switch self {
         case .chat: "Gatita Chat"
         case .code: "Gatita Code"
+        case .remote: "Gatita PC"
         }
     }
 
@@ -24,6 +27,7 @@ nonisolated enum GatitaMode: String, Codable, CaseIterable, Sendable {
         switch self {
         case .chat: "Regular chat. No project files, edits, commands, plugin commands, or GitHub."
         case .code: "Reads and edits the project, runs allowed commands, and uses plugins. GitHub needs a project folder."
+        case .remote: "Sends chats to your paired Mac, which answers with its own key and no project tools."
         }
     }
 

@@ -8,6 +8,17 @@ Gatita uses three numbers, MAJOR.MINOR.PATCH, plus a channel while it is not fin
 
 No number resets. Each one keeps counting up, so after 0.0.2, a release with new models is 0.1.3, and a big refactor after that is 1.2.4.
 
+## 0.0.5 alpha
+
+Pairing codes, a PC tab, and connection status.
+
+- **PC tab.** On iPhone and iPad, the PC tab sends its chats to your paired Mac, which answers with its own key and no project tools. Its chats are kept apart from the Chat tab's.
+- **Connection status.** The chat says whether you are connected to your Mac. The Mac says when a device connects.
+- **Pairing codes.** The Mac makes a new six-digit code each time you allow devices, and the phone types it in. The code stops working when the time is up.
+- **Fixes.** A code with spaces around it now pairs. Pressing Connect with no code says what to do.
+- **Removed.** The "Send my chats to my Mac" switch. The PC tab replaces it.
+- **Web.** `web_curl` sends a raw GET request for APIs and JSON. It shows the status, the content type, and the body as text. The same public https rules apply as for pages.
+
 ## 0.0.4 alpha
 
 Pairing, the Settings menu, and iPad layout.

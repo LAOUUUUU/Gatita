@@ -19,6 +19,10 @@ final class RemoteTests: XCTestCase {
         XCTAssertFalse(HostSession.accepts(nil, pairingCode: "1234", pairingOpenUntil: open))
     }
 
+    func testSpacesAroundTheCodeDoNotStopPairing() {
+        XCTAssertTrue(HostSession.accepts(Data("1234".utf8), pairingCode: " 1234 ", pairingOpenUntil: open))
+    }
+
     func testNothingPairsWhilePairingIsClosedOrExpired() {
         XCTAssertFalse(HostSession.accepts(Data("1234".utf8), pairingCode: "1234", pairingOpenUntil: nil))
         XCTAssertFalse(HostSession.accepts(Data("1234".utf8), pairingCode: "1234", pairingOpenUntil: Date().addingTimeInterval(-1)))
@@ -38,11 +42,16 @@ final class RemoteTests: XCTestCase {
         XCTAssertEqual(name, "iPad")
     }
 
-    func testSendingToAPairedDeviceIsSaved() throws {
-        var settings = AppSettings()
-        XCTAssertFalse(settings.sendToMac)
-        settings.sendToMac = true
-        let loaded = try JSONDecoder().decode(AppSettings.self, from: try JSONEncoder().encode(settings))
-        XCTAssertTrue(loaded.sendToMac)
+    func testTheConnectionLineSaysWhatIsHappening() {
+        XCTAssertEqual(RemoteStatus.line(connectedName: "Lao's MacBook"),
+                       "Connected to Lao's MacBook. It's up. What would you like to do?")
+        XCTAssertEqual(RemoteStatus.line(connectedName: nil),
+                       "Not connected to your Mac. Connect to it in Settings, then Pairing.")
+    }
+
+    func testTheMacSaysWhenADeviceIsConnected() {
+        XCTAssertNil(RemoteStatus.hostLine(names: []))
+        XCTAssertEqual(RemoteStatus.hostLine(names: ["iPad"]),
+                       "iPad is connected. It's up. What would you like to do?")
     }
 }

@@ -19,6 +19,11 @@ final class ModeTests: XCTestCase {
         XCTAssertEqual(GatitaMode.code.connectors(["github", "web"], hasProject: true), ["github", "web"])
     }
 
+    func testThePCModeGoesToTheMacWithNoProjectTools() {
+        XCTAssertFalse(GatitaMode.remote.usesProjectTools)
+        XCTAssertEqual(GatitaMode(rawValue: "remote"), .remote)
+    }
+
     func testAChatOnTheMacHasNoReportOrQuestionTools() {
         XCTAssertFalse(GatitaMode.chat.usesReportTools)
         XCTAssertTrue(GatitaMode.code.usesReportTools)

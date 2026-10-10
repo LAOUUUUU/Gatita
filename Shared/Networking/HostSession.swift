@@ -26,6 +26,8 @@ final class HostSession: NSObject {
     var receivedPrompts: [String] = []
     var lastResponse: String = ""
     var connectedClientCount = 0
+    /// Names of the devices connected to this Mac, for the chat screen.
+    var connectedNames: [String] = []
 
     private let serviceType = "gatita-host"
     private let peerID: MCPeerID
@@ -66,7 +68,8 @@ final class HostSession: NSObject {
     /// Whether an invitation may pair. Pairing must be open, the code must be set, and the invitation must carry it.
     nonisolated static func accepts(_ context: Data?, pairingCode: String, pairingOpenUntil: Date?, now: Date = Date()) -> Bool {
         guard let until = pairingOpenUntil, now < until else { return false }
-        return !pairingCode.isEmpty && context == Data(pairingCode.utf8)
+        let code = pairingCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !code.isEmpty && context == Data(code.utf8)
     }
 
     /// Sends one message to a client. MCSession can be used from any thread.
@@ -107,7 +110,10 @@ final class HostSession: NSObject {
 
 extension HostSession: MCSessionDelegate {
     nonisolated func session(_ session: MCSession, peer peerID: MCPeerID, didChange state: MCSessionState) {
-        Task { @MainActor in self.connectedClientCount = session.connectedPeers.count }
+        Task { @MainActor in
+            self.connectedClientCount = session.connectedPeers.count
+            self.connectedNames = session.connectedPeers.map(\.displayName)
+        }
     }
 
     nonisolated func session(_ session: MCSession, didReceive data: Data, fromPeer peerID: MCPeerID) {
@@ -132,7 +138,7 @@ extension HostSession: MCNearbyServiceAdvertiserDelegate {
                                 withContext context: Data?,
                                 invitationHandler: @escaping (Bool, MCSession?) -> Void) {
         Task { @MainActor in
-            let accepted = HostSession.accepts(context, pairingCode: self.viewModel?.remoteCode ?? "",
+            let accepted = HostSession.accepts(context, pairingCode: self.viewModel?.pairingCode ?? "",
                                                pairingOpenUntil: self.viewModel?.pairingOpenUntil)
             invitationHandler(accepted, accepted ? self.mcSession : nil)
         }

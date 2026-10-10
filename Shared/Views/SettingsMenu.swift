@@ -97,12 +97,15 @@ struct HostSettingsView: View {
 
     private var pairingSubtitle: String {
         #if os(macOS)
-        return viewModel.remoteCode.isEmpty ? "No code set" : "Accepting devices with the code"
+        if viewModel.isPairingOpen, let code = viewModel.pairingCode {
+            return "Open, code \(code)"
+        }
+        return "Closed"
         #else
         if let name = viewModel.remoteMac.connectedName {
             return "Connected to \(name)"
         }
-        return viewModel.sendToMac ? "Not connected" : "Off"
+        return "Not connected"
         #endif
     }
 
@@ -200,7 +203,13 @@ struct PairingSettingsView: View {
             Section {
                 TimelineView(.periodic(from: .now, by: 15)) { _ in
                     if viewModel.isPairingOpen, let until = viewModel.pairingOpenUntil {
-                        Text("Devices with the code can pair until \(until.formatted(date: .omitted, time: .shortened)).")
+                        if let code = viewModel.pairingCode {
+                            Text(code)
+                                .font(.system(size: 40, weight: .bold, design: .monospaced))
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity)
+                        }
+                        Text("Devices can pair until \(until.formatted(date: .omitted, time: .shortened)).")
                             .foregroundStyle(.secondary)
                         Button("Stop allowing devices", role: .destructive) {
                             viewModel.closePairing()
@@ -214,24 +223,21 @@ struct PairingSettingsView: View {
             } header: {
                 Text("Allow pairing")
             } footer: {
-                Text("A device can pair only while this is allowed, and it has the code.")
-            }
-
-            Section {
-                SecureField("Pairing code, the same on both devices", text: $viewModel.remoteCode)
-            } header: {
-                Text("Pairing code")
-            } footer: {
-                #if os(macOS)
-                Text("Phones and iPads with this code can send chats to this Mac. This Mac answers with its own Gatita key, and without project tools.")
-                #else
-                Text("Enter the same code on your Mac, then connect to it below.")
-                #endif
+                Text("Allowing devices makes a new code. A phone or iPad needs it to pair, and it stops working when the time is up.")
             }
 
             #if !os(macOS)
             Section {
-                Toggle("Send my chats to my Mac", isOn: $viewModel.sendToMac)
+                SecureField("Code shown on your Mac", text: $viewModel.remoteCode)
+            } header: {
+                Text("Pairing code")
+            } footer: {
+                Text("Type the code your Mac shows, then connect to it below.")
+            }
+            #endif
+
+            #if !os(macOS)
+            Section {
                 if !viewModel.remoteMac.status.isEmpty {
                     Text(viewModel.remoteMac.status)
                         .foregroundStyle(.secondary)

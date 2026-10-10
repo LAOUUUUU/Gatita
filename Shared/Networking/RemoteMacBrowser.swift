@@ -54,6 +54,11 @@ final class RemoteMacBrowser: NSObject {
 
     /// Invites a nearby device. The pairing code travels with the invitation, and the device accepts only the right code.
     func connect(to device: Found, code: String) {
+        let code = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !code.isEmpty else {
+            status = "Type the pairing code first. It must match the code on your Mac."
+            return
+        }
         status = "Sent an invitation to \(device.id)."
         browser.invitePeer(device.peer, to: session, withContext: Data(code.utf8), timeout: 30)
     }

@@ -32,7 +32,7 @@ extension ToolActivity {
         case "search_text": "magnifyingglass"
         case "write_file", "edit_file": "pencil.line"
         case "git_status", "git_diff": "arrow.triangle.branch"
-        case "web_fetch", "web_check": "globe"
+        case "web_fetch", "web_curl", "web_check": "globe"
         case "list_reports", "read_report": "exclamationmark.bubble"
         case "ask_user": "questionmark.bubble"
         case "calendar_events": "calendar"

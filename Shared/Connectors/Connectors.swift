@@ -23,8 +23,8 @@ nonisolated enum Connectors {
                       tools: ["github_list_prs", "github_view_pr", "github_pr_checks", "github_list_issues", "github_view_issue"],
                       macOnly: true),
         ConnectorInfo(id: "web", name: "Web pages",
-                      summary: "Reads the text of a public https page, such as documentation.",
-                      tools: ["web_fetch"], macOnly: false),
+                      summary: "Reads public https pages as text, and sends raw GET requests for APIs and JSON.",
+                      tools: ["web_fetch", "web_curl"], macOnly: false),
         ConnectorInfo(id: "calendar", name: "Calendar",
                       summary: "Reads events from this Mac's calendars, through macOS calendar access. Read-only.",
                       tools: ["calendar_events"], macOnly: true),
@@ -50,6 +50,7 @@ nonisolated enum Connectors {
         "github_list_issues": #"{"tool": "github_list_issues", "state": "open, closed, or all (optional, default open)"} lists issues."#,
         "github_view_issue": #"{"tool": "github_view_issue", "number": "<issue number>"} shows one issue as JSON."#,
         "web_fetch": #"{"tool": "web_fetch", "url": "<https address>"} reads the text of a public https page, up to 20,000 characters."#,
+        "web_curl": #"{"tool": "web_curl", "url": "<https address>"} sends a GET request and shows the status, the content type, and the body as text, up to 20,000 characters. Use it for APIs and JSON. Use web_fetch to read a page."#,
         "calendar_events": #"{"tool": "calendar_events", "start": "<day as YYYY-MM-DD, optional, default today>", "days": "<number of days, optional, default 7, up to 31>"} lists the events in that window, earliest first."#,
     ]
 
@@ -57,6 +58,9 @@ nonisolated enum Connectors {
     static func run(_ tool: String, arguments: [String: String], root: URL?) async throws -> String {
         if tool == "web_fetch" {
             return try await WebFetch.fetch(arguments["url"] ?? "")
+        }
+        if tool == "web_curl" {
+            return try await WebCurl.fetch(arguments["url"] ?? "")
         }
         #if os(macOS)
         if tool == "calendar_events" {

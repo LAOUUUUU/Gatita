@@ -19,6 +19,8 @@ struct HostChatView: View {
     @State private var showingChats = false
     @State private var promptPositions: [UUID: CGFloat] = [:]
     @State private var scrollOffset: CGFloat = 0
+    /// Names of the devices connected to this Mac. Shown at the top of the chat screen.
+    var connectedDevices: [String] = []
 
     private enum SidebarChoice: String, CaseIterable, Identifiable {
         case chats = "Chats"
@@ -275,10 +277,37 @@ struct HostChatView: View {
             })
     }
 
+    /// Whether this chat reaches a device: the paired Mac in the PC tab, or a device connected to this Mac.
+    private var connectionLine: (text: String, connected: Bool)? {
+        if viewModel.mode == .remote {
+            let name = viewModel.remoteMac.connectedName
+            return (RemoteStatus.line(connectedName: name), name != nil)
+        }
+        guard let text = RemoteStatus.hostLine(names: connectedDevices) else { return nil }
+        return (text, true)
+    }
+
+    private func connectionBanner(_ line: (text: String, connected: Bool)) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Circle()
+                .fill(line.connected ? Color.green : Color.orange)
+                .frame(width: 8, height: 8)
+            Text(line.text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+    }
+
     // MARK: - Detail
 
     private var detail: some View {
         VStack(spacing: 0) {
+            if let line = connectionLine {
+                connectionBanner(line)
+            }
             if viewModel.messages.isEmpty {
                 starterScreen
             } else {
@@ -353,7 +382,9 @@ struct HostChatView: View {
             Text(greeting)
                 .font(.title2)
                 .foregroundStyle(.white.opacity(0.85))
-            starterChips
+            if viewModel.mode != .remote {
+                starterChips
+            }
             Spacer()
         }
         .padding()
