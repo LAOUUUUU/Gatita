@@ -15,11 +15,15 @@ import Foundation
 @MainActor
 final class GatitaClient {
     nonisolated static let defaultBaseURL = URL(string: "https://api.gatita.tech/v1")!
-    nonisolated static let maxToolRounds = 25
+    nonisolated static let maxToolRounds = 40
+    /// How many times one reply may be asked to go on: after an empty turn, a cut-off, or an unfinished tool call.
+    nonisolated static let maxNudges = 2
     nonisolated static let openTag = "<gatita-tool>"
     nonisolated static let closeTag = "</gatita-tool>"
 
     private let apiKey: String
+    /// Whether to ask the server for usage in the stream. Turned off for good if the server refuses the option.
+    private var sendsUsageOption = true
     private let baseURL: URL
     private let model: String
     private let tools: ProjectTools?
@@ -55,7 +59,7 @@ final class GatitaClient {
         guard let registry = tasks else {
             return "error: background commands and subagents are not available here."
         }
-        let args = (try? JSONDecoder().decode([String: String].self, from: Data(arguments.utf8))) ?? [:]
+        let args = ToolArguments.parse(arguments) ?? [:]
 
         switch name {
         case "run_background":
@@ -74,9 +78,16 @@ final class GatitaClient {
 
         case "task_status":
             guard let id = args["id"] else { return "error: missing argument id" }
+            guard registry.backgroundTask(id) != nil else { return "error: no background task with id \(id)" }
+            // Wait for a running task before answering, so the model doesn't poll a status that has not changed.
+            let deadline = Date().addingTimeInterval(TaskStatusText.waitSeconds(args["wait"]))
+            while registry.backgroundTask(id)?.status == .running, Date() < deadline, !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
             guard let task = registry.backgroundTask(id) else { return "error: no background task with id \(id)" }
             let exit = task.exitCode.map { "exit code \($0)" } ?? "no exit code yet"
-            return "status: \(String(describing: task.status))\n\(exit)\noutput:\n\(task.output.suffix(3000))"
+            let running = task.status == .running
+            return "status: \(String(describing: task.status))\n\(exit)\n\(TaskStatusText.note(running: running))\noutput:\n\(task.output.suffix(3000))"
 
         case "task_stop":
             guard let id = args["id"] else { return "error: missing argument id" }
@@ -130,40 +141,82 @@ final class GatitaClient {
         }
 
         var toolNumber = 0
+        var nudges = 0
+        var carried = "" // text shown since the last tool call, from turns that were asked to go on
+        var lastBlock: String? // the previous tool call, to notice the same call twice in a row
         for _ in 0..<Self.maxToolRounds {
-            let turn = try await streamTurn(history, onEvent: onEvent)
-            guard let tools, let block = turn.toolBlock else {
-                return turn.visible
+            let turn = try await turn(history, onEvent: onEvent)
+
+            if let tools, let block = turn.toolBlock {
+                // ask_user is not a tool: it hands the question to the user and ends the turn.
+                if Self.toolName(in: block) == "ask_user", tools.allowsReports {
+                    onEvent(.question(Self.field("question", in: block) ?? ""))
+                    return carried + turn.visible
+                }
+
+                // The model's words before the block, then the block itself, as it wrote them.
+                history.append(WireMessage(role: "assistant",
+                                           content: turn.visible + Self.openTag + block + Self.closeTag))
+                toolNumber += 1
+                let id = "t\(toolNumber)"
+                let name = Self.toolName(in: block)
+                onEvent(.toolStarted(id: id, name: name, arguments: block))
+                let change = tools.changePreview(name: name, arguments: block)
+                let result: String
+                if let handled = await runTaskTool(name: name, arguments: block, tools: tools) {
+                    result = handled
+                } else {
+                    result = await tools.execute(name: name, arguments: block)
+                }
+                onEvent(.toolFinished(id: id, name: name, result: result))
+                if let change, !result.hasPrefix("error:") {
+                    onEvent(.fileChanged(id: id, change: change))
+                }
+                // The note is for the model only, so the chat still sees an error as an error.
+                let repeated = ToolRepeat.isRepeat(block, of: lastBlock)
+                lastBlock = block
+                let shown = repeated ? ToolRepeat.note + "\n" + result : result
+                history.append(WireMessage(role: "user",
+                                           content: "<gatita-tool-result name=\"\(name)\">\n\(shown)\n</gatita-tool-result>"))
+                carried = ""
+                continue
             }
 
-            // ask_user is not a tool: it hands the question to the user and ends the turn.
-            if Self.toolName(in: block) == "ask_user", tools.allowsReports {
-                onEvent(.question(Self.field("question", in: block) ?? ""))
-                return turn.visible
+            // No tool call. A finished reply is returned. One that stopped for no good reason is asked to go on.
+            guard let ending = TurnEnding.classify(visible: turn.visible, finishReason: turn.finishReason,
+                                                   endedCleanly: turn.endedCleanly, unfinishedBlock: turn.unfinishedBlock,
+                                                   hasTools: tools != nil) else {
+                return carried + turn.visible
             }
-
-            // The model's words before the block, then the block itself, as it wrote them.
-            history.append(WireMessage(role: "assistant",
-                                       content: turn.visible + Self.openTag + block + Self.closeTag))
-            toolNumber += 1
-            let id = "t\(toolNumber)"
-            let name = Self.toolName(in: block)
-            onEvent(.toolStarted(id: id, name: name, arguments: block))
-            let change = tools.changePreview(name: name, arguments: block)
-            let result: String
-            if let handled = await runTaskTool(name: name, arguments: block, tools: tools) {
-                result = handled
+            guard nudges < Self.maxNudges, let note = ending.nudge(hasTools: tools != nil) else {
+                if ending.isErrorWhenExhausted { throw GatitaError.endedEarly(ending) }
+                return carried + turn.visible
+            }
+            nudges += 1
+            if ending == .unfinished {
+                onEvent(.text("\n\n"))
+                carried += turn.visible + "\n\n"
             } else {
-                result = await tools.execute(name: name, arguments: block)
+                carried += turn.visible
             }
-            onEvent(.toolFinished(id: id, name: name, result: result))
-            if let change, !result.hasPrefix("error:") {
-                onEvent(.fileChanged(id: id, change: change))
-            }
-            history.append(WireMessage(role: "user",
-                                       content: "<gatita-tool-result name=\"\(name)\">\n\(result)\n</gatita-tool-result>"))
+            Self.goOn(after: turn.visible, note: note, history: &history)
         }
         throw GatitaError.toolRoundLimit
+    }
+
+    /// Adds what the model said so far and the note asking it to go on. An empty message is not sent back, so the
+    /// note joins the last user message instead, which keeps the roles alternating.
+    private static func goOn(after said: String, note: String, history: inout [WireMessage]) {
+        if said.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let last = history.last, last.role == "user", case .text(let text) = last.content {
+                history[history.count - 1] = WireMessage(role: "user", content: text + "\n\n" + note)
+            } else {
+                history.append(WireMessage(role: "user", content: note))
+            }
+        } else {
+            history.append(WireMessage(role: "assistant", content: said))
+            history.append(WireMessage(role: "user", content: note))
+        }
     }
 
     private struct TurnResult {
@@ -171,36 +224,101 @@ final class GatitaClient {
         let visible: String
         /// JSON inside the first complete <gatita-tool> block, if the model wrote one.
         let toolBlock: String?
+        /// Why the server said it stopped (finish_reason), if it said.
+        let finishReason: String?
+        /// True when the stream ended with [DONE] or a finish reason. False when the connection just closed.
+        let endedCleanly: Bool
+        /// What followed an opening tool tag that never closed, when that is not a whole tool call.
+        let unfinishedBlock: String?
+    }
+
+    /// Whether a server refused the usage option, so the request must go without it.
+    /// A 400 or 422 that names the option, in any case, as "stream_options" or "include_usage".
+    nonisolated static func rejectsStreamOptions(status: Int, body: String) -> Bool {
+        let text = body.lowercased()
+        return [400, 422].contains(status) && (text.contains("stream_options") || text.contains("include_usage"))
+    }
+
+    /// One turn. A rate limit (HTTP 429) is waited out and the turn sent again, up to `RateLimit.maxWaits` times;
+    /// after that, or when the wait would be too long, the 429 is the error.
+    private func turn(_ history: [WireMessage], onEvent: (StreamEvent) -> Void) async throws -> TurnResult {
+        var waits = 0
+        while true {
+            do {
+                return try await usageTurn(history, onEvent: onEvent)
+            } catch GatitaError.rateLimited(let delay, let body) {
+                guard waits < RateLimit.maxWaits, let seconds = RateLimit.waitSeconds(delay) else {
+                    throw GatitaError.http(status: 429, body: body)
+                }
+                waits += 1
+                onEvent(.waiting(seconds: Int(seconds.rounded(.up))))
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            }
+        }
+    }
+
+    /// One turn with the usage option. If the server refuses the option, the client drops it and sends again.
+    private func usageTurn(_ history: [WireMessage], onEvent: (StreamEvent) -> Void) async throws -> TurnResult {
+        guard sendsUsageOption else {
+            return try await streamTurn(history, onEvent: onEvent, includeUsage: false)
+        }
+        do {
+            return try await streamTurn(history, onEvent: onEvent, includeUsage: true)
+        } catch GatitaError.http(let status, let body) where Self.rejectsStreamOptions(status: status, body: body) {
+            sendsUsageOption = false
+            return try await streamTurn(history, onEvent: onEvent, includeUsage: false)
+        }
     }
 
     /// One streamed model turn. The turn ends at the first complete tool block, so the model
     /// cannot invent a result for a tool it has not run yet.
-    private func streamTurn(_ history: [WireMessage], onEvent: (StreamEvent) -> Void) async throws -> TurnResult {
+    private func streamTurn(_ history: [WireMessage], onEvent: (StreamEvent) -> Void, includeUsage: Bool) async throws -> TurnResult {
         var request = URLRequest(url: baseURL.appendingPathComponent("chat/completions"))
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-        request.httpBody = try JSONEncoder().encode(ChatRequest(model: model, messages: history, stream: true))
+        var body = ChatRequest(model: model, messages: history, stream: true)
+        if includeUsage {
+            body.streamOptions = ChatRequest.StreamOptions(includeUsage: true)
+        }
+        request.httpBody = try JSONEncoder().encode(body)
 
         let (bytes, response) = try await session.bytes(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? -1
         guard (200..<300).contains(status) else {
             var body = Data()
             for try await byte in bytes.prefix(300) { body.append(byte) }
-            throw GatitaError.http(status: status, body: String(decoding: body, as: UTF8.self))
+            let text = String(decoding: body, as: UTF8.self)
+            if status == 429 {
+                let header = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Retry-After")
+                throw GatitaError.rateLimited(retryAfter: RateLimit.delay(header: header, body: text), body: text)
+            }
+            throw GatitaError.http(status: status, body: text)
         }
 
         var pending = ""        // text received but not yet shown or parsed
         var visible = ""
         var toolBlock: String?
+        var finishReason: String?
+        var sawDone = false
         for try await line in bytes.lines {
             guard line.hasPrefix("data:") else { continue }
             let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
-            if payload == "[DONE]" { break }
+            if payload == "[DONE]" {
+                sawDone = true
+                break
+            }
+            // The usage arrives in a chunk with no choices, so it is read before the choices are checked.
+            if let usage = TokenUsage.read(fromChunk: payload) {
+                onEvent(.usage(usage))
+            }
             guard let data = payload.data(using: .utf8),
                   let chunk = try? JSONDecoder().decode(StreamChunk.self, from: data),
                   let choice = chunk.choices.first else { continue }
+            if let reason = choice.finishReason {
+                finishReason = reason
+            }
             if choice.finishReason == "content_filter" {
                 onEvent(.safetyStop)
             }
@@ -211,6 +329,9 @@ final class GatitaClient {
             }
             if let piece = delta.content, !piece.isEmpty {
                 pending += piece
+                if ReplyCheck.stopsStream(at: String(visible.suffix(200)) + pending) {
+                    throw GatitaError.garbled(sample: String((visible + pending).suffix(400)))
+                }
                 let drained = Self.drain(&pending)
                 if !drained.text.isEmpty {
                     visible += drained.text
@@ -223,11 +344,21 @@ final class GatitaClient {
             }
         }
 
-        if toolBlock == nil, !pending.isEmpty {
+        var unfinishedBlock: String?
+        if toolBlock == nil, pending.hasPrefix(Self.openTag) {
+            // The stream ended inside a tool block. If its JSON is whole, the model only forgot the closing tag.
+            let rest = String(pending.dropFirst(Self.openTag.count))
+            if let object = TurnEnding.completeObject(in: rest), ToolArguments.parse(object) != nil {
+                toolBlock = object
+            } else {
+                unfinishedBlock = rest
+            }
+        } else if toolBlock == nil, !pending.isEmpty {
             visible += pending
             onEvent(.text(pending))
         }
-        return TurnResult(visible: visible, toolBlock: toolBlock)
+        return TurnResult(visible: visible, toolBlock: toolBlock, finishReason: finishReason,
+                          endedCleanly: sawDone || finishReason != nil, unfinishedBlock: unfinishedBlock)
     }
 
     /// Splits `pending` into text that can be shown now and a finished tool block, if one is complete.
@@ -263,14 +394,12 @@ final class GatitaClient {
 
     /// One text field of a tool block, or nil.
     private static func field(_ name: String, in block: String) -> String? {
-        let fields = try? JSONDecoder().decode([String: String].self, from: Data(block.utf8))
-        return fields?[name]
+        ToolArguments.parse(block)?[name]
     }
 
     /// The "tool" field of a block, or "unknown" when the block is not valid JSON.
     private static func toolName(in block: String) -> String {
-        let fields = try? JSONDecoder().decode([String: String].self, from: Data(block.utf8))
-        return fields?["tool"] ?? "unknown"
+        ToolArguments.parse(block)?["tool"] ?? "unknown"
     }
 }
 
@@ -284,13 +413,23 @@ nonisolated enum StreamEvent: Sendable {
     case question(String)
     /// The model stopped the reply because a safety filter fired (finish_reason "content_filter").
     case safetyStop
+    /// Tokens used by one round of the reply, when the server sends them in the stream.
+    case usage(TokenUsage)
     /// A write or edit changed a file. The change is the diff the chat shows.
     case fileChanged(id: String, change: FileChange)
+    /// The API's rate limit was reached. The client waits this many seconds, then sends the turn again.
+    case waiting(seconds: Int)
 }
 
 nonisolated enum GatitaError: LocalizedError {
     case http(status: Int, body: String)
     case toolRoundLimit
+    /// The reply leaked a control token, so the stream was stopped. `sample` is the end of the text received.
+    case garbled(sample: String)
+    /// The reply ended for no good reason and asking the model to go on did not help.
+    case endedEarly(TurnEnding)
+    /// HTTP 429. Waited out inside the client; it reaches the app as `.http(429, ...)` once the waits are used up.
+    case rateLimited(retryAfter: TimeInterval?, body: String)
 
     /// The reason the server gave, from an error body such as {"error": {"message": "..."}}.
     /// Nil when the body has none, so the app never invents one.
@@ -301,6 +440,9 @@ nonisolated enum GatitaError: LocalizedError {
             return message
         }
         if let error = object["error"] as? String, !error.isEmpty {
+            if let message = object["message"] as? String, !message.isEmpty, message != error {
+                return "\(error) (\(message))"
+            }
             return error
         }
         if let message = object["message"] as? String, !message.isEmpty {
@@ -314,7 +456,13 @@ nonisolated enum GatitaError: LocalizedError {
         case .http(let status, let body):
             return "Gatita returned HTTP \(status): \(body)"
         case .toolRoundLimit:
-            return "Gatita kept calling tools; stopped after \(GatitaClient.maxToolRounds) rounds."
+            return "Gatita made \(GatitaClient.maxToolRounds) rounds of tool calls on this reply, so it was paused."
+        case .garbled:
+            return "Gatita's reply came back garbled, so it was stopped."
+        case .endedEarly(let ending):
+            return ending.explanation
+        case .rateLimited(_, let body):
+            return "Gatita returned HTTP 429: \(body)"
         }
     }
 }
@@ -379,6 +527,20 @@ private nonisolated struct ChatRequest: Encodable {
     let model: String
     let messages: [WireMessage]
     let stream: Bool
+    var streamOptions: StreamOptions? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case model, messages, stream
+        case streamOptions = "stream_options"
+    }
+
+    struct StreamOptions: Encodable {
+        let includeUsage: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case includeUsage = "include_usage"
+        }
+    }
 }
 
 /// One `data:` payload of a streamed reply.

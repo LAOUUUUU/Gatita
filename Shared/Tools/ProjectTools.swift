@@ -12,6 +12,10 @@ nonisolated struct ProjectTools: Sendable {
     static let maxListEntries = 500
     static let maxListDepth = 4
     static let maxSearchHits = 200
+    /// The most files find_files and the same-name suggestions look at, so a huge folder stays quick.
+    static let maxScannedFiles = 30_000
+    /// Folders find_files and the same-name suggestions skip: version control and build output.
+    private static let skippedFolders: Set<String> = [".git", "node_modules", ".build", "DerivedData", "build", "Pods", ".venv", "__pycache__"]
 
     /// The project folder. Nil on hosts without one, where every file tool and command is refused.
     let root: URL?
@@ -78,6 +82,7 @@ nonisolated struct ProjectTools: Sendable {
                     ? "<gatita-tool>{\"tool\": \"list_reports\"}</gatita-tool>"
                     : "<gatita-tool>{\"tool\": \"web_fetch\", \"url\": \"https://example.com\"}</gatita-tool>",
             "The result comes back in your next message inside <gatita-tool-result> tags. Never invent results. When you have what you need, answer normally without tool blocks.",
+            "After each result, either call the next tool or answer the user. Never end a message with nothing, or with a colon and no tool block.",
         ]
         if allowsReports {
             lines.append("If a tool or a reply fails, call list_reports, then read_report on the newest failure, before trying a fix.")
@@ -88,7 +93,9 @@ nonisolated struct ProjectTools: Sendable {
             lines += [
                 "- list_files: {\"tool\": \"list_files\", \"path\": \"<folder, or . for the project root>\"} lists files and folders up to 4 levels deep.",
                 "- read_file: {\"tool\": \"read_file\", \"path\": \"<file>\"} reads a text file.",
-                "- search_text: {\"tool\": \"search_text\", \"query\": \"<text>\"} finds lines containing the text, as path:line:text, up to 200 hits.",
+                "- read_files: {\"tool\": \"read_files\", \"paths\": \"<paths, one per line>\"} reads up to \(ReadFiles.maxFiles) files at once and returns them as one Markdown document, each under its path. Use it instead of several read_file calls.",
+                "- find_files: {\"tool\": \"find_files\", \"name\": \"<part of a file name>\"} lists the files whose name contains the text, in any case. Use it to find a file instead of guessing its path.",
+                "- search_text: {\"tool\": \"search_text\", \"query\": \"<text>\", \"path\": \"<folder, optional>\", \"ignore_case\": true} finds lines containing the text, as path:line:text, up to 200 hits. path and ignore_case are optional.",
                 "- git_status: {\"tool\": \"git_status\"} lists changed files in the project's git repository.",
                 "- git_diff: {\"tool\": \"git_diff\", \"path\": \"<optional file>\"} shows uncommitted changes.",
             ]
@@ -133,23 +140,44 @@ nonisolated struct ProjectTools: Sendable {
         return lines.joined(separator: "\n")
     }
 
+    /// The names of the tools on offer, read from the instructions so the two always agree.
+    var toolNames: [String] {
+        let pattern = try? NSRegularExpression(pattern: #""tool": "([a-z_]+)""#)
+        return instructions.components(separatedBy: "\n").filter { $0.hasPrefix("- ") }.compactMap { line in
+            let range = NSRange(line.startIndex..., in: line)
+            guard let match = pattern?.firstMatch(in: line, range: range),
+                  let name = Range(match.range(at: 1), in: line) else { return nil }
+            return String(line[name])
+        }
+    }
+
+    private var toolList: String {
+        toolNames.joined(separator: ", ")
+    }
+
     /// Runs one tool call. Errors come back as "error: ..." text so the model can react to them.
     func run(name: String, arguments: String) -> String {
         do {
-            let args = try JSONDecoder().decode([String: String].self, from: Data(arguments.utf8))
+            guard let args = ToolArguments.parse(arguments) else {
+                throw ToolError(#"the tool block is not valid JSON, so nothing ran. Write one JSON object with double quotes, and \n for each line break inside a text, such as {"tool": "read_file", "path": "README.md"}"#)
+            }
             switch name {
             case "list_files":
                 return try listFiles(try required(args, "path"))
             case "read_file":
                 return try readFile(try required(args, "path"))
+            case "read_files":
+                return try readFiles(try required(args, "paths"))
             case "write_file":
                 return try writeFile(path: try required(args, "path"), content: try required(args, "content"))
             case "run_command":
                 guard allowCommands else {
                     throw ToolError("running commands is turned off. Turn on \"Let Gatita run commands\" in Settings.")
                 }
-                guard let argv = CommandPolicy.allowed(try required(args, "command"), commands) else {
-                    throw ToolError("that command is not on the allowed list, or it uses shell syntax")
+                let command = try required(args, "command")
+                guard let argv = CommandPolicy.allowed(command, commands) else {
+                    let allowed = commands.map { $0.joined(separator: " ") }.joined(separator: ", ")
+                    throw ToolError("\(command) is not on the allowed list, or it uses shell syntax (pipes, quotes, redirects). Allowed commands, each with any plain arguments after it: \(allowed)")
                 }
                 return try runCommand(argv)
             case "list_reports" where allowsReports:
@@ -159,7 +187,11 @@ nonisolated struct ProjectTools: Sendable {
             case "ask_user" where allowsReports:
                 return "the question was sent to the user; wait for their answer."
             case "search_text":
-                return try searchText(try required(args, "query"))
+                return try searchText(try required(args, "query"), in: args["path"],
+                                      ignoreCase: args["ignore_case"] == "true")
+            case "find_files":
+                let found = try findFiles(named: try required(args, "name"))
+                return found.isEmpty ? "(no matches)" : found.joined(separator: "\n")
             case "git_status":
                 return try git(["status", "--short", "--branch"])
             case "git_diff":
@@ -173,7 +205,11 @@ nonisolated struct ProjectTools: Sendable {
                                     oldText: try required(args, "old_text"),
                                     newText: try required(args, "new_text"))
             default:
-                return "error: unknown tool \(name)"
+                // The client names a block with no "tool" field "unknown".
+                if name == "unknown", args["tool"] == nil {
+                    return #"error: the tool block has no "tool" field, so nothing ran. Name the tool, such as {"tool": "read_file", "path": "README.md"}. Tools you can use here: "# + toolList
+                }
+                return "error: unknown tool \(name). Tools you can use here: \(toolList)"
             }
         } catch {
             return "error: \(error.localizedDescription)"
@@ -214,13 +250,63 @@ nonisolated struct ProjectTools: Sendable {
 
     private func readFile(_ relative: String) throws -> String {
         let url = try resolve(relative)
-        guard isRegularFile(url) else { throw ToolError("not a file: \(relative)") }
+        guard isRegularFile(url) else { throw ToolError(notAFile(relative, at: url)) }
         let data = try Data(contentsOf: url)
         guard let text = String(data: data, encoding: .utf8) else {
             throw ToolError("not a UTF-8 text file: \(relative)")
         }
         guard text.count > Self.maxReadCharacters else { return text }
         return String(text.prefix(Self.maxReadCharacters)) + "\n... truncated at \(Self.maxReadCharacters) characters"
+    }
+
+    /// Reads several files and returns them as one Markdown document. A file that can't be read gets its reason
+    /// in place of its text, and the others are still read. The text of all files together is capped.
+    private func readFiles(_ list: String) throws -> String {
+        let paths = ReadFiles.pathList(list)
+        guard !paths.isEmpty else { throw ToolError("give at least one path in paths") }
+        guard paths.count <= ReadFiles.maxFiles else {
+            throw ToolError("\(paths.count) files is too many. Read at most \(ReadFiles.maxFiles) at a time.")
+        }
+
+        var sections: [String] = []
+        var seen = Set<URL>()
+        var distinct = 0
+        var read = 0
+        var remaining = ReadFiles.maxCharacters
+        for path in paths {
+            let url: URL
+            do {
+                url = try resolve(path)
+            } catch {
+                distinct += 1
+                sections.append(ReadFiles.section(path: path, note: "error: \(error.localizedDescription)"))
+                continue
+            }
+            guard seen.insert(url).inserted else { continue } // the same file under another spelling
+            distinct += 1
+            guard remaining > 0 else {
+                sections.append(ReadFiles.section(path: path, note: "skipped: the \(ReadFiles.maxCharacters)-character limit for one read_files call was reached. Read it on its own."))
+                continue
+            }
+            do {
+                var text = try readFile(path)
+                var cut = false
+                if text.count > remaining {
+                    text = String(text.prefix(remaining))
+                    cut = true
+                }
+                remaining -= text.count
+                read += 1
+                var section = ReadFiles.section(path: path, text: text)
+                if cut {
+                    section += "\n\ntruncated: the \(ReadFiles.maxCharacters)-character limit for one read_files call was reached."
+                }
+                sections.append(section)
+            } catch {
+                sections.append(ReadFiles.section(path: path, note: "error: \(error.localizedDescription)"))
+            }
+        }
+        return (["Read \(read) of \(distinct) files."] + sections).joined(separator: "\n\n")
     }
 
     private func writeFile(path: String, content: String) throws -> String {
@@ -282,14 +368,65 @@ nonisolated struct ProjectTools: Sendable {
         }
     }
 
-    private func searchText(_ query: String) throws -> String {
+    /// Why a path can't be read as a file: it is a folder, or it does not exist. A missing file's name is looked up
+    /// in the rest of the project, so the model learns where it really is.
+    private func notAFile(_ relative: String, at url: URL) -> String {
+        var isDirectory: ObjCBool = false
+        if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue {
+            return "not a file: \(relative) is a folder. Use list_files to see what is in it."
+        }
+        let name = url.lastPathComponent
+        let sameName = ((try? findFiles(named: name)) ?? []).filter { ($0 as NSString).lastPathComponent == name }
+        guard !sameName.isEmpty else { return "not a file: \(relative). Use find_files to look for it." }
+        return "not a file: \(relative). Files with that name: \(sameName.prefix(5).joined(separator: ", "))"
+    }
+
+    /// Project files whose name contains the text, in any case, sorted by path. Version control and build folders
+    /// are skipped.
+    private func findFiles(named text: String) throws -> [String] {
+        let needle = text.trimmingCharacters(in: .whitespaces)
+        guard !needle.isEmpty else { throw ToolError("name is empty") }
+        // The path-based walker gives paths relative to the root, whatever symlinks (such as /private) lead to it.
+        guard let walker = FileManager.default.enumerator(atPath: try folder().path) else { return [] }
+        var found: [String] = []
+        var scanned = 0
+        while let path = walker.nextObject() as? String {
+            let name = (path as NSString).lastPathComponent
+            if walker.fileAttributes?[.type] as? FileAttributeType == .typeDirectory {
+                if Self.skippedFolders.contains(name) { walker.skipDescendants() }
+                continue
+            }
+            scanned += 1
+            if scanned > Self.maxScannedFiles || found.count >= Self.maxSearchHits { break }
+            if name.range(of: needle, options: .caseInsensitive) != nil {
+                found.append(path)
+            }
+        }
+        return found.sorted()
+    }
+
+    private func searchText(_ query: String, in path: String? = nil, ignoreCase: Bool = false) throws -> String {
         guard !query.isEmpty else { throw ToolError("query is empty") }
         var hits: [String] = []
-        try searchFolder(try folder(), relativeTo: "", query: query, hits: &hits)
+        let start: URL
+        let prefix: String
+        if let path, !path.isEmpty, path != "." {
+            start = try resolve(path)
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: start.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+                throw ToolError("not a folder: \(path)")
+            }
+            prefix = String(start.path.dropFirst(try folder().path.count + 1))
+        } else {
+            start = try folder()
+            prefix = ""
+        }
+        try searchFolder(start, relativeTo: prefix, query: query, ignoreCase: ignoreCase, hits: &hits)
         return hits.isEmpty ? "(no matches)" : hits.joined(separator: "\n")
     }
 
-    private func searchFolder(_ folder: URL, relativeTo parent: String, query: String, hits: inout [String]) throws {
+    private func searchFolder(_ folder: URL, relativeTo parent: String, query: String, ignoreCase: Bool,
+                              hits: inout [String]) throws {
         let entries = try FileManager.default.contentsOfDirectory(
             at: folder, includingPropertiesForKeys: [.isDirectoryKey])
         for url in entries.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
@@ -298,9 +435,10 @@ nonisolated struct ProjectTools: Sendable {
             let path = parent.isEmpty ? name : parent + "/" + name
             let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
             if isDirectory {
-                try searchFolder(url, relativeTo: path, query: query, hits: &hits)
+                try searchFolder(url, relativeTo: path, query: query, ignoreCase: ignoreCase, hits: &hits)
             } else if let text = try? String(contentsOf: url, encoding: .utf8) {
-                for (number, line) in text.components(separatedBy: "\n").enumerated() where line.contains(query) {
+                for (number, line) in text.components(separatedBy: "\n").enumerated()
+                where ignoreCase ? line.range(of: query, options: .caseInsensitive) != nil : line.contains(query) {
                     hits.append("\(path):\(number + 1):\(line)")
                     if hits.count >= Self.maxSearchHits { break }
                 }
@@ -338,8 +476,7 @@ nonisolated struct ProjectTools: Sendable {
     /// The change a write or edit would make, for the diff in the chat. Nothing is written. Nil for other tools,
     /// and for an edit that would fail.
     func changePreview(name: String, arguments: String) -> FileChange? {
-        guard let args = try? JSONDecoder().decode([String: String].self, from: Data(arguments.utf8)),
-              let path = args["path"] else { return nil }
+        guard let args = ToolArguments.parse(arguments), let path = args["path"] else { return nil }
         let current = (try? readText(path)) ?? ""
         switch name {
         case "write_file":
@@ -355,7 +492,9 @@ nonisolated struct ProjectTools: Sendable {
         }
     }
 
-    /// Runs one tool call. The web check needs the main actor, so it is awaited here; everything else runs inline.
+    /// Runs one tool call off the main actor, so a long command or a slow page never freezes the window.
+    /// The web check needs the main actor, so it hops back there on its own.
+    @concurrent
     func execute(name: String, arguments: String) async -> String {
         if let connector = Connectors.connector(for: name) {
             guard connectors.contains(connector.id) else {
@@ -363,6 +502,8 @@ nonisolated struct ProjectTools: Sendable {
             }
             do {
                 return try await Connectors.run(name, arguments: Connectors.stringArguments(arguments), root: root)
+            } catch where NoInternet.matches(error, online: true) {
+                return NoInternet.toolError(service: connector.name)
             } catch {
                 return "error: \(error.localizedDescription)"
             }
@@ -370,7 +511,7 @@ nonisolated struct ProjectTools: Sendable {
         #if os(macOS)
         if name == "web_check" {
             do {
-                let args = try JSONDecoder().decode([String: String].self, from: Data(arguments.utf8))
+                let args = ToolArguments.parse(arguments) ?? [:]
                 let file = try resolve(try required(args, "path"))
                 return try await WebCheck.check(file: file, root: try folder())
             } catch {
@@ -437,7 +578,7 @@ nonisolated struct ProjectTools: Sendable {
 
     private func requireWrites() throws {
         guard allowWrites else {
-            throw ToolError("writes are disabled; set GATITA_ALLOW_WRITES=1 on the host to allow edits")
+            throw ToolError("writing files is turned off. If the user wants Gatita to change files, they can turn on \"Let Gatita edit files in the project\" in Settings.")
         }
     }
 

@@ -40,7 +40,7 @@ nonisolated enum ShopCategory: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .plugins: return "Plugins add commands and skills. Commands run sandboxed, with no network, when you turn on running commands in Settings."
         case .connectors: return "Connectors read outside services. Turning one on keeps it on for this chat, and mentioning !name uses it for one message."
-        case .skills: return "Skills are instructions Gatita follows. Pick one with / in the input, or from the skill menu."
+        case .skills: return "Skills are instructions Gatita follows. Pick one with / in the input, or from the skill menu. \(Skills.all.count) come built in; these add more."
         }
     }
 }
@@ -58,7 +58,15 @@ nonisolated struct ShopItem: Identifiable, Sendable {
 
 /// The free items on offer. Everything here is bundled with the app; nothing is downloaded or run to install it.
 nonisolated enum Shop {
-    static let items: [ShopItem] = [
+    static let items: [ShopItem] = plugins + connectors + skills
+
+    /// One item per connector in the catalog, so a new connector shows up here without a second list to keep.
+    private static let connectors: [ShopItem] = Connectors.catalog.map { connector in
+        ShopItem(id: "\(connector.id)-connector", name: connector.name, kind: .connector,
+                 summary: connector.summary, manifest: "", connectorID: connector.id)
+    }
+
+    private static let plugins: [ShopItem] = [
         ShopItem(id: "swift-dev", name: "Swift developer", kind: .plugin,
                  summary: "A SwiftUI review skill, and a command that lists the Xcode project's schemes.",
                  manifest: swiftDeveloper, connectorID: nil),
@@ -68,14 +76,9 @@ nonisolated enum Shop {
         ShopItem(id: "node-tools", name: "Node tools", kind: .plugin,
                  summary: "Runs the project's lint script, and a skill that fixes what it reports.",
                  manifest: nodeTools, connectorID: nil),
+    ]
 
-        ShopItem(id: "github-connector", name: "GitHub", kind: .connector,
-                 summary: "Reads pull requests, checks, and issues through your gh login. Read-only.",
-                 manifest: "", connectorID: "github"),
-        ShopItem(id: "web-connector", name: "Web pages", kind: .connector,
-                 summary: "Reads the text of a public https page, such as documentation.",
-                 manifest: "", connectorID: "web"),
-
+    private static let skills: [ShopItem] = [
         ShopItem(id: "security-review", name: "Security review", kind: .skill,
                  summary: "Looks for injection, secrets in code, and unsafe file or shell use.",
                  manifest: securityReview, connectorID: nil),

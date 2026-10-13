@@ -36,6 +36,12 @@ nonisolated enum ChatHistory {
         return support.appendingPathComponent("Gatita/chats.json")
     }
 
+    /// Whether a chat has anything of its own to keep: a question or a reply. A chat that only holds a notice,
+    /// such as the /usage counts, or an error is not saved.
+    static func isWorthSaving(_ messages: [ChatMessage]) -> Bool {
+        messages.contains { $0.role == "user" || $0.role == "assistant" }
+    }
+
     /// The first question, shortened, or "New chat" when there is none.
     static func title(for messages: [ChatMessage]) -> String {
         guard let question = messages.first(where: { $0.role == "user" })?

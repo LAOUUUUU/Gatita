@@ -29,6 +29,7 @@ extension ToolActivity {
         switch name {
         case "run_command": "terminal"
         case "read_file", "list_files": "doc.text"
+        case "read_files": "doc.on.doc"
         case "search_text": "magnifyingglass"
         case "write_file", "edit_file": "pencil.line"
         case "git_status", "git_diff": "arrow.triangle.branch"
@@ -36,6 +37,14 @@ extension ToolActivity {
         case "list_reports", "read_report": "exclamationmark.bubble"
         case "ask_user": "questionmark.bubble"
         case "calendar_events": "calendar"
+        case "find_files": "doc.text.magnifyingglass"
+        case "weather": "cloud.sun"
+        case "wikipedia_search", "wikipedia_page": "book"
+        case "define": "character.book.closed"
+        case "exchange_rates": "dollarsign.circle"
+        case "package_info": "shippingbox"
+        case "stackoverflow_search", "stackoverflow_answers": "text.bubble"
+        case "repo_info", "repo_readme": "chevron.left.forwardslash.chevron.right"
         default: name.hasPrefix("github_") ? "arrow.triangle.pull" : "wrench.and.screwdriver"
         }
     }

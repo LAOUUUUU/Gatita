@@ -14,6 +14,12 @@ nonisolated enum ReplyCheck {
         text.range(of: controlToken, options: .regularExpression) != nil
     }
 
+    /// Whether a stream should stop now. Only the last few hundred characters are checked, which is enough
+    /// to see a control token the moment its closing "|>" arrives.
+    static func stopsStream(at text: String) -> Bool {
+        isCorrupted(String(text.suffix(200)))
+    }
+
     static func stripControlTokens(_ text: String) -> String {
         text.replacingOccurrences(of: controlToken, with: "", options: .regularExpression)
     }

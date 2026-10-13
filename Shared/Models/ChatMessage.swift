@@ -29,6 +29,12 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     var attachedContext: String
     /// Pictures attached to this message. Optional, so chats saved before pictures existed still load.
     var images: [ChatImage]?
+    /// Tokens this reply used, when the server reports them. Optional, so older chats still load.
+    var usage: TokenUsage?
+    /// True when the reply is pinned. Optional, so older chats still load.
+    var pinned: Bool?
+    /// When the reply finished. Optional, so older chats still load.
+    var respondedAt: Date?
 
     /// The pictures attached to this message, or none.
     var attachedImages: [ChatImage] { images ?? [] }
@@ -41,7 +47,10 @@ struct ChatMessage: Identifiable, Codable, Hashable {
          isStreaming: Bool = false,
          errorText: String? = nil,
          attachedContext: String = "",
-         images: [ChatImage]? = nil) {
+         images: [ChatImage]? = nil,
+         usage: TokenUsage? = nil,
+         pinned: Bool? = nil,
+         respondedAt: Date? = nil) {
         self.id = id
         self.role = role
         self.content = content
@@ -51,6 +60,9 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         self.errorText = errorText
         self.attachedContext = attachedContext
         self.images = images
+        self.usage = usage
+        self.pinned = pinned
+        self.respondedAt = respondedAt
     }
 
     /// What the model receives: the message plus its attachments.

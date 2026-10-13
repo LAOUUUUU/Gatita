@@ -63,11 +63,13 @@ final class AgentLoopTests: XCTestCase {
                 events.append("question:\(text)")
             case .toolStarted(let id, let name, let arguments):
                 events.append("start:\(id):\(name):\(arguments)")
+            case .usage:
+                break
             case .toolFinished(let id, _, let result):
                 events.append("done:\(id):\(result.contains("App/GatitaApp.swift"))")
             case .safetyStop:
                 events.append("safety")
-            case .fileChanged:
+            case .fileChanged, .waiting:
                 break
             }
         }
@@ -118,5 +120,90 @@ final class AgentLoopTests: XCTestCase {
         }
         XCTAssertEqual(asked, ["question:Which file should I read?"])
         XCTAssertTrue(answer.isEmpty)
+    }
+
+    // MARK: - Replies that used to just end
+
+    private func runScenario(_ marker: String, tools: ProjectTools? = nil) async throws -> (text: String, events: [String]) {
+        let client = GatitaClient(apiKey: "test-key", baseURL: MockGatita.base, tools: tools ?? readOnly)
+        var events: [String] = []
+        let text = try await client.stream(messages: [ChatMessage(role: "user", content: "\(marker) please")]) { event in
+            switch event {
+            case .text(let piece): events.append("text:\(piece)")
+            case .toolStarted(_, let name, _): events.append("tool:\(name)")
+            case .waiting(let seconds): events.append("waiting:\(seconds)")
+            default: break
+            }
+        }
+        return (text, events)
+    }
+
+    func testAnEmptyReplyAfterAToolResultIsAskedToAnswer() async throws {
+        let result = try await runScenario("EMPTY-AFTER-TOOL")
+        XCTAssertEqual(result.text, "mock: recovered after an empty reply")
+        XCTAssertEqual(result.events.filter { $0.hasPrefix("tool:") }, ["tool:list_files"])
+    }
+
+    func testAReplyCutOffByTheLengthLimitIsContinued() async throws {
+        let result = try await runScenario("CUT-OFF")
+        XCTAssertEqual(result.text, "mock: first half, second half.")
+    }
+
+    func testAToolCallWithoutItsClosingTagStillRuns() async throws {
+        let result = try await runScenario("NO-CLOSE-TAG")
+        XCTAssertEqual(result.text, "mock: found App/GatitaApp.swift")
+        XCTAssertEqual(result.events.filter { $0.hasPrefix("tool:") }, ["tool:list_files"])
+    }
+
+    func testAToolCallCutOffMidwayIsAskedForAgainAndNeverShown() async throws {
+        let result = try await runScenario("BROKEN-BLOCK")
+        XCTAssertEqual(result.text, "mock: found App/GatitaApp.swift")
+        XCTAssertFalse(result.events.contains { $0.hasPrefix("text:") && $0.contains("list_fi") }, "the broken block was shown")
+    }
+
+    func testAReplyThatEndsInAColonIsAskedOnceToGoOn() async throws {
+        let result = try await runScenario("COLON-END")
+        XCTAssertEqual(result.text, "Checking the task:\n\nmock: done after the nudge.")
+        XCTAssertEqual(result.events, ["text:Checking the task:", "text:\n\n", "text:mock: done after the nudge."])
+    }
+
+    func testAReplyThatKeepsComingBackEmptyEndsWithAnError() async {
+        do {
+            _ = try await runScenario("ALWAYS-EMPTY")
+            XCTFail("an empty reply was accepted")
+        } catch GatitaError.endedEarly(let ending) {
+            XCTAssertEqual(ending, .empty)
+        } catch {
+            XCTFail("wrong error: \(error)")
+        }
+    }
+
+    func testAConnectionThatClosesEarlyEndsWithAnError() async {
+        do {
+            _ = try await runScenario("DROPPED")
+            XCTFail("a reply that was cut off was accepted")
+        } catch GatitaError.endedEarly(let ending) {
+            XCTAssertEqual(ending, .closedEarly)
+        } catch {
+            XCTFail("wrong error: \(error)")
+        }
+    }
+
+    func testARateLimitIsWaitedOutAndTheRequestSentAgain() async throws {
+        let result = try await runScenario("RATE-LIMIT-ONCE")
+        XCTAssertEqual(result.text, "mock: answered after the rate limit")
+        XCTAssertTrue(result.events.contains("waiting:1"), "\(result.events)")
+    }
+
+    func testARateLimitThatLastsEndsWithTheServersError() async {
+        do {
+            _ = try await runScenario("RATE-LIMIT-ALWAYS")
+            XCTFail("a reply that was always rate limited was accepted")
+        } catch GatitaError.http(let status, let body) {
+            XCTAssertEqual(status, 429)
+            XCTAssertTrue(body.contains("Rate limit"), body)
+        } catch {
+            XCTFail("wrong error: \(error)")
+        }
     }
 }

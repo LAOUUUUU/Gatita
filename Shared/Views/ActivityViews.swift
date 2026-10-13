@@ -31,9 +31,16 @@ struct WaveDots: View {
 struct ThinkingView: View {
     let text: String
     let isLive: Bool
+    @State private var expanded: Bool
+
+    init(text: String, isLive: Bool, startsExpanded: Bool = false) {
+        self.text = text
+        self.isLive = isLive
+        _expanded = State(initialValue: startsExpanded)
+    }
 
     var body: some View {
-        DisclosureGroup {
+        DisclosureGroup(isExpanded: $expanded) {
             if !text.isEmpty {
                 Text(text)
                     .font(.callout)
@@ -55,8 +62,13 @@ struct ThinkingView: View {
 /// One tool call: the name and arguments, a spinner while it runs, and the result when expanded.
 struct ToolActivityRow: View {
     let activity: ToolActivity
-    /// A file change opens with its diff showing.
-    @State private var expanded = true
+    @State private var expanded: Bool
+
+    /// A file change opens with its diff showing, unless the caller folds it.
+    init(activity: ToolActivity, expanded: Bool = true) {
+        self.activity = activity
+        _expanded = State(initialValue: expanded)
+    }
 
     var body: some View {
         DisclosureGroup(isExpanded: $expanded) {

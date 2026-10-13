@@ -33,6 +33,8 @@ final class ChatViewModel {
     let tasks = TaskRegistry()
     /// Nearby devices running Gatita, for sending chats to one of them.
     let remoteMac = RemoteMacBrowser()
+    /// Whether this device is online. The chat shows a banner while it is not.
+    let connectivity = Connectivity()
     /// The code this device types in to pair with a Mac. Kept in the Keychain, not in the settings file.
     var remoteCode: String {
         didSet { saveRemoteCode() }
@@ -65,6 +67,8 @@ final class ChatViewModel {
     var finishedReplies = 0
     /// A question Gatita asked. Answer it by sending a message.
     var pendingQuestion: String?
+    /// When the reply in progress will be sent again after the API's rate limit. Nil when it is not waiting.
+    private(set) var retryAt: Date?
     /// What the prompt box holds, so the starter prompts can fill it.
     var draft = ""
     /// Files dropped on the prompt box. Their text goes to Gatita with the next message.
@@ -80,6 +84,14 @@ final class ChatViewModel {
     /// Saved in the Keychain; each change is written as you type.
     var apiKey: String {
         didSet { persistAPIKey() }
+    }
+    /// How much of a reply the chat shows. Saved in the settings file.
+    var transcriptView: TranscriptView {
+        didSet { persistSettings() }
+    }
+    /// Your own instructions, read before every reply. Saved in the settings file.
+    var customInstructions: String {
+        didSet { persistSettings() }
     }
     /// Folder Gatita may list and read. Empty means plain chat with no file tools. Saved in the settings file.
     var projectRoot: String {
@@ -144,6 +156,8 @@ final class ChatViewModel {
         self.mode = startMode
         self.sessionMode = startMode
         self.keepAwake = saved.keepAwake
+        self.transcriptView = saved.transcriptView
+        self.customInstructions = saved.customInstructions
         self.remoteCode = KeychainStore.read(account: "remote-code") ?? ""
         self.model = Self.models.contains(saved.model) ? saved.model : Self.models[0]
         self.conversations = ChatHistory.load(from: ChatHistory.defaultFile)
@@ -193,12 +207,59 @@ final class ChatViewModel {
         return Self.filePaths(in: tree)
     }
 
+    /// Carries out a button under a reply.
+    func performAction(_ action: MessageAction, on id: UUID) {
+        guard let message = messages.first(where: { $0.id == id }) else { return }
+        switch action {
+        case .copy:
+            Clipboard.copy(message.content)
+        case .fork:
+            forkChat(at: id)
+        case .pin:
+            togglePin(id)
+        case .reply:
+            draft += (draft.isEmpty ? "" : "\n") + MessageActions.quote(message.content)
+        }
+    }
+
+    /// Starts a new saved chat with the messages up to this reply. The chat it came from is kept as it was.
+    private func forkChat(at id: UUID) {
+        guard let kept = MessageActions.fork(messages, upTo: id) else { return }
+        stop()
+        saveCurrentChat()
+        messages = kept
+        currentConversationID = nil
+        errorMessage = nil
+        sessionMode = mode
+        saveCurrentChat()
+    }
+
+    private func togglePin(_ id: UUID) {
+        guard let index = messages.firstIndex(where: { $0.id == id }) else { return }
+        messages[index].pinned = messages[index].pinned != true
+        saveCurrentChat()
+    }
+
+    /// Shows the token totals as a notice in the chat. Gatita is not asked, and notices are not sent back to it.
+    private func showUsage() {
+        let otherChats = conversations.filter { $0.id != currentConversationID }.flatMap(\.messages)
+        let text = UsageReport.text(thisChat: UsageReport.totals(of: messages),
+                                    allChats: UsageReport.totals(of: otherChats + messages))
+        messages.append(ChatMessage(role: "notice", content: text))
+        saveCurrentChat()
+    }
+
     /// Starts a reply in the background. Use stop() to cancel it.
     func send(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !droppedFiles.isEmpty, !isSending else { return }
         errorMessage = nil
         pendingQuestion = nil
+
+        if UsageReport.isCommand(trimmed) {
+            showUsage()
+            return
+        }
 
         // A message that breaks a local safety rule is refused here, and Gatita is never asked.
         if let flag = SafetyFlags.match(trimmed) {
@@ -213,7 +274,17 @@ final class ChatViewModel {
 
         let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         let viaPairedDevice = mode == .remote && HostPolicy.current != .mac
+        // A message that is not sent goes back in the prompt box, which was cleared when it was sent.
+        // With no internet the request cannot work, so it is not sent.
+        if !viaPairedDevice, !connectivity.isOnline {
+            draft = text
+            showNoInternet()
+            analytics.count("offline")
+            log.info("message not sent: no internet access")
+            return
+        }
         guard !key.isEmpty || viaPairedDevice else {
+            draft = text
             errorMessage = "Add your Gatita API key in Settings first."
             return
         }
@@ -230,7 +301,7 @@ final class ChatViewModel {
         let reply = ChatMessage(role: "assistant", content: "", isStreaming: true)
         messages.append(reply)
         let replyID = reply.id
-        let history = Array(messages.dropLast().filter { $0.role != "error" })
+        let history = Array(messages.dropLast().filter { $0.role != "error" && $0.role != "notice" })
 
         isSending = true
         analytics.count("message_sent")
@@ -243,22 +314,42 @@ final class ChatViewModel {
         let mentionedConnectors = Set(Composer.pluginMentions(in: trimmed).filter { Connectors.connector(named: $0) != nil })
         let client = GatitaClient(apiKey: key, model: model,
                                   tools: makeTools(connectors: connectors.union(mentionedConnectors), mode: mode),
-                                  extraInstructions: instructions, tasks: tasks)
+                                  extraInstructions: CustomInstructions.systemText(custom: customInstructions, skill: instructions),
+                                  tasks: tasks)
         sendTask = Task {
             do {
                 try await client.stream(messages: history) { event in
                     self.apply(event, toReply: replyID)
                 }
                 if self.pendingQuestion == nil { self.finishedReplies += 1 }
+            } catch GatitaError.garbled(let sample) {
+                self.messages.removeAll { $0.id == replyID }
+                self.analytics.count("reply_garbled")
+                let report = self.recordFailure(kind: "reply-garbled",
+                                                message: "The reply contained control tokens and was stopped early.",
+                                                details: ["model: \(self.model)", "sample: \(sample)"])
+                let lines = ["Send the message again.", report.map { "Report saved: \($0)" }].compactMap { $0 }
+                self.addErrorBubble(GatitaError.garbled(sample: sample).errorDescription ?? "Gatita's reply came back garbled.",
+                                    detail: lines.joined(separator: "\n"))
             } catch {
                 let cancelled = Task.isCancelled || (error as? URLError)?.code == .cancelled
                 if cancelled {
                     self.analytics.count("stopped")
                     self.updateReply(replyID) { $0.errorText = "Stopped." }
+                } else if NoInternet.matches(error, online: self.connectivity.isOnline) {
+                    // Being offline is not a bug, so no failure report is written.
+                    self.analytics.count("offline")
+                    self.log.info("reply failed: no internet access (\(error.localizedDescription))")
+                    self.showNoInternet()
+                    self.removeIfEmpty(replyID)
                 } else {
-                    let report = self.recordFailure(kind: "reply", message: error.localizedDescription,
-                                                    details: ["model: \(self.model)", "project: \(self.projectRoot)"])
+                    let rateLimited: Bool
+                    if case GatitaError.http(429, _) = error { rateLimited = true } else { rateLimited = false }
+                    // A rate limit is the server's rule, not a bug, so it gets no failure report either.
+                    let report = rateLimited ? nil : self.recordFailure(kind: "reply", message: error.localizedDescription,
+                                                                        details: ["model: \(self.model)", "project: \(self.projectRoot)"])
                     self.addErrorBubble(Self.headline(for: error), detail: Self.detail(for: error, report: report))
+                    self.removeIfEmpty(replyID)
                 }
             }
             // A reply with leaked control tokens is not kept. The question stays, so it can be sent again.
@@ -273,7 +364,15 @@ final class ChatViewModel {
                 let lines = ["Send the message again.", report.map { "Report saved: \($0)" }].compactMap { $0 }
                 self.addErrorBubble("Gatita's reply came back garbled, so it was not kept.", detail: lines.joined(separator: "\n"))
             }
-            self.updateReply(replyID) { $0.isStreaming = false }
+            // Gatita did not count this reply, so estimate it from the text.
+            if let index = self.messages.firstIndex(where: { $0.id == replyID }), self.messages[index].usage == nil,
+               !self.messages[index].content.isEmpty {
+                self.messages[index].usage = TokenEstimate.usage(sentText: history.map(\.sentText),
+                                                                 reply: self.messages[index].content)
+                self.log.info("no token count from the server, so the reply was estimated")
+            }
+            self.updateReply(replyID) { $0.isStreaming = false; $0.respondedAt = Date() }
+            self.retryAt = nil
             self.isSending = false
             self.sendTask = nil
             if !self.messages.isEmpty {
@@ -371,9 +470,9 @@ final class ChatViewModel {
         ChatHistory.save(conversations, to: ChatHistory.defaultFile)
     }
 
-    /// Writes the chat on screen into the history, if it has any messages.
+    /// Writes the chat on screen into the history, if it has a question or a reply.
     func saveCurrentChat() {
-        guard !messages.isEmpty else { return }
+        guard ChatHistory.isWorthSaving(messages) else { return }
         let id = currentConversationID ?? UUID()
         currentConversationID = id
         // Saving again keeps the title that was already generated for this chat.
@@ -409,6 +508,7 @@ final class ChatViewModel {
     }
 
     private func apply(_ event: StreamEvent, toReply id: UUID) {
+        if case .waiting = event {} else { retryAt = nil }
         switch event {
         case .toolStarted(_, let name, let arguments):
             analytics.count("tool:\(name)")
@@ -429,7 +529,11 @@ final class ChatViewModel {
             analytics.count("safety_stop")
             log.info("reply stopped by a safety filter")
             addErrorBubble("Gatita stopped this reply for safety.")
-        case .text, .reasoning:
+        case .waiting(let seconds):
+            retryAt = Date().addingTimeInterval(TimeInterval(seconds))
+            analytics.count("rate_limited")
+            log.info("rate limited, waiting \(seconds) s before sending again")
+        case .text, .reasoning, .usage:
             break
         }
 
@@ -442,8 +546,10 @@ final class ChatViewModel {
             case .toolStarted(let callID, let name, let arguments):
                 reply.activities.append(ToolActivity(id: callID, name: name, arguments: arguments, result: nil,
                                                      startedAt: Date()))
-            case .question, .safetyStop:
+            case .question, .safetyStop, .waiting:
                 break
+            case .usage(let usage):
+                reply.usage = reply.usage?.adding(usage) ?? usage
             case .fileChanged(let callID, let change):
                 if let position = reply.activities.firstIndex(where: { $0.id == callID }) {
                     reply.activities[position].change = change
@@ -472,7 +578,7 @@ final class ChatViewModel {
                 self.messages.removeAll { $0.id == replyID && $0.content.isEmpty }
                 self.addErrorBubble("Gatita could not reach your Mac.", detail: error.localizedDescription)
             }
-            self.updateReply(replyID) { $0.isStreaming = false }
+            self.updateReply(replyID) { $0.isStreaming = false; $0.respondedAt = Date() }
             self.isSending = false
             self.sendTask = nil
             self.saveCurrentChat()
@@ -489,6 +595,21 @@ final class ChatViewModel {
         }
     }
 
+    /// A reply with nothing in it (no text, thinking, or tool calls) is not left behind as an empty gap above an error.
+    private func removeIfEmpty(_ id: UUID) {
+        guard let index = messages.firstIndex(where: { $0.id == id }) else { return }
+        let reply = messages[index]
+        if reply.content.isEmpty, reply.reasoning.isEmpty, reply.activities.isEmpty {
+            messages.remove(at: index)
+        }
+    }
+
+    /// Shows "Error: No internet access." once: an earlier copy of it is removed first.
+    private func showNoInternet() {
+        messages.removeAll { $0.role == "error" && $0.content == NoInternet.headline }
+        addErrorBubble(NoInternet.headline, detail: NoInternet.detail)
+    }
+
     /// Shows an error as a red message after the latest one. It is not sent back to Gatita.
     private func addErrorBubble(_ headline: String, detail: String? = nil) {
         messages.append(ChatMessage(role: "error", content: headline, errorText: detail))
@@ -496,8 +617,17 @@ final class ChatViewModel {
 
     /// The first line of an error bubble.
     private static func headline(for error: Error) -> String {
+        if let gatita = error as? GatitaError, case .http(429, _) = gatita {
+            return "Gatita's rate limit was reached."
+        }
         if let gatita = error as? GatitaError, case .http(let status, _) = gatita {
             return "Gatita could not answer (HTTP \(status))."
+        }
+        if let gatita = error as? GatitaError, case .endedEarly = gatita {
+            return "Gatita's reply ended early."
+        }
+        if let gatita = error as? GatitaError, case .toolRoundLimit = gatita {
+            return "Gatita paused after many tool calls."
         }
         return "Gatita could not answer."
     }
@@ -505,12 +635,21 @@ final class ChatViewModel {
     /// The detail under the headline. A "Reason:" line appears only when the server gave one.
     private static func detail(for error: Error, report: String?) -> String? {
         var lines: [String] = []
-        if let gatita = error as? GatitaError, case .http(_, let body) = gatita {
+        if let gatita = error as? GatitaError, case .http(let status, let body) = gatita {
             if let reason = GatitaError.serverReason(in: body) {
                 lines.append("Reason: \(reason)")
             }
+            if status == 429 {
+                lines.append("Gatita waited and tried again, but the limit held. Wait a minute, then send \"continue\".")
+            }
         } else {
             lines.append(error.localizedDescription)
+            if let gatita = error as? GatitaError {
+                switch gatita {
+                case .endedEarly, .toolRoundLimit: lines.append("Send \"continue\" to go on.")
+                default: break
+                }
+            }
         }
         if let report {
             lines.append("Report saved: \(report)")
@@ -561,7 +700,7 @@ final class ChatViewModel {
     /// Writes every remembered setting to the settings file. The API key is never part of it.
     private func persistSettings() {
         SettingsStore.save(AppSettings(projectRoot: projectRoot, model: model, connectors: connectors.sorted(),
-                                       allowWrites: allowWrites, allowCommands: allowCommands, skillID: skillID, mode: mode, keepAwake: keepAwake),
+                                       allowWrites: allowWrites, allowCommands: allowCommands, skillID: skillID, mode: mode, keepAwake: keepAwake, transcriptView: transcriptView, customInstructions: customInstructions),
                            to: SettingsStore.defaultFile)
     }
 

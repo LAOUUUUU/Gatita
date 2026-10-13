@@ -19,6 +19,8 @@ struct HostChatView: View {
     @State private var showingChats = false
     @State private var promptPositions: [UUID: CGFloat] = [:]
     @State private var scrollOffset: CGFloat = 0
+    /// True when the chat is scrolled all the way down. The prompt rail then highlights the last prompt.
+    @State private var atBottom = false
     /// Names of the devices connected to this Mac. Shown at the top of the chat screen.
     var connectedDevices: [String] = []
 
@@ -89,9 +91,17 @@ struct HostChatView: View {
                 .presentationBackground(Theme.background)
         }
         .sheet(isPresented: $showingShop) {
-            ShopView(viewModel: viewModel)
-                .frame(width: 620, height: 680)
-                .presentationBackground(Theme.background)
+            NavigationStack {
+                ShopView(viewModel: viewModel)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { showingShop = false }
+                                .keyboardShortcut(.cancelAction)
+                        }
+                    }
+            }
+            .frame(width: 620, height: 680)
+            .presentationBackground(Theme.background)
         }
         #else
         NavigationStack {
@@ -287,6 +297,29 @@ struct HostChatView: View {
         return (text, true)
     }
 
+    /// Shown at the top of the chat while the device has no network. The PC tab can still reach a Mac nearby.
+    private var offlineBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "wifi.slash")
+                .font(.system(size: 13, weight: .semibold))
+            Text("No internet access")
+                .font(.callout.weight(.semibold))
+            Text(viewModel.mode == .remote
+                 ? "Your paired Mac can still answer over the local network."
+                 : "Gatita can't answer until you're back online.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+        }
+        .foregroundStyle(.red)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(Color.red.opacity(0.12))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Error: No internet access")
+    }
+
     private func connectionBanner(_ line: (text: String, connected: Bool)) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Circle()
@@ -305,6 +338,9 @@ struct HostChatView: View {
 
     private var detail: some View {
         VStack(spacing: 0) {
+            if !viewModel.connectivity.isOnline {
+                offlineBanner
+            }
             if let line = connectionLine {
                 connectionBanner(line)
             }
@@ -319,6 +355,16 @@ struct HostChatView: View {
                     .font(.caption)
                     .foregroundStyle(.red)
                     .padding(.horizontal)
+            }
+
+            if let retryAt = viewModel.retryAt {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    Label(RateLimit.note(until: retryAt, now: context.date), systemImage: "hourglass")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 4)
             }
 
             HostInputBar(viewModel: viewModel)
@@ -345,6 +391,20 @@ struct HostChatView: View {
                     .buttonStyle(.plain)
                     .help("Activity")
                 }
+                Menu {
+                    Picker("Transcript view", selection: $viewModel.transcriptView) {
+                        ForEach(TranscriptView.allCases) { Text($0.title).tag($0) }
+                    }
+                } label: {
+                    Image(systemName: "text.alignleft")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 30, height: 30)
+                }
+                .menuStyle(.borderlessButton)
+                .tint(.gray)
+                .fixedSize()
+                .help("Transcript view")
                 NotificationBadge(viewModel: viewModel)
                 if viewModel.mode == .code {
                     Button {
@@ -430,7 +490,8 @@ struct HostChatView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 22) {
                         ForEach(viewModel.messages) { message in
-                            MessageBubble(message: message)
+                            MessageBubble(message: message, transcriptView: viewModel.transcriptView,
+                                          onAction: { viewModel.performAction($0, on: message.id) })
                                 .id(message.id)
                                 .background(promptPosition(for: message))
                         }
@@ -445,6 +506,12 @@ struct HostChatView: View {
                     geometry.contentOffset.y
                 } action: { _, offset in
                     scrollOffset = offset
+                }
+                .onScrollGeometryChange(for: Bool.self) { geometry in
+                    // Within a few points of the end counts as the bottom.
+                    geometry.contentOffset.y >= geometry.contentSize.height - geometry.containerSize.height - 8
+                } action: { _, bottom in
+                    atBottom = bottom
                 }
                 .onPreferenceChange(PromptPositionKey.self) { promptPositions = $0 }
                 .onChange(of: promptCount) { _, _ in
@@ -507,8 +574,7 @@ struct HostChatView: View {
 
     /// The last prompt that has reached the top of the view, or the first prompt before any has.
     private func currentPrompt(among prompts: [ChatMessage]) -> UUID? {
-        let reached = prompts.last(where: { (promptPositions[$0.id] ?? 0) <= scrollOffset + 40 })
-        return (reached ?? prompts.first)?.id
+        PromptRail.current(order: prompts.map(\.id), positions: promptPositions, offset: scrollOffset, atBottom: atBottom)
     }
 
     private struct PromptPositionKey: PreferenceKey {

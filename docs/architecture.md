@@ -23,7 +23,7 @@ Gatita is one SwiftUI app with several targets. The Mac is the full host. iPhone
 `Shared/Tools/HostPolicy.swift` decides what a host can do, from the platform it runs on.
 
 - **Mac:** project folder, file reads and edits (when turned on), allowed commands in the sandbox, GitHub, calendar, web reads, and pull requests.
-- **iPhone, iPad, Vision Pro:** no project folder, so every file tool, command, and PR path is refused. GitHub and calendar are not offered. Web reads and the ask and report tools remain.
+- **iPhone, iPad, Vision Pro:** no project folder, so every file tool, command, and PR path is refused. GitHub and calendar are not offered. Web reads, the public connectors, and the ask and report tools remain.
 
 The decision is in [001](decisions/001-question-only-hosts.md).
 
@@ -47,19 +47,44 @@ A saved chat records the mode it was started in (`Conversation.mode`), and the s
 
 Each tool call records its start and finish time (`ToolActivity.startedAt` and `finishedAt`), so the activity panel can show status and duration.
 
+## Connectors
+
+`Shared/Connectors/Connectors.swift` holds the catalog. A connector's tools are offered only when it is on (in Settings, or with `!name` in the message), and `Connectors.run` sends each tool to its code:
+
+- GitHub (`macOS/GitHubConnector.swift`) reads the project's own repo through `gh`. Calendar (`macOS/CalendarConnector.swift`) reads EventKit. Both are Mac only.
+- Web pages (`WebFetch`, `WebCurl`) read public https addresses.
+- The public services (`InfoConnectors.swift`: Weather, Wikipedia, DictionaryLookup, CurrencyRates; `CodeConnectors.swift`: PackageInfo, StackOverflow, PublicGitHub) call free APIs that need no key. Each type builds its addresses and turns the JSON into text in pure functions, which the tests check with saved answers. `PublicAPI` does the GET, with a User-Agent that names Gatita, and the shared text helpers. See [007](decisions/007-public-api-connectors.md).
+
+A connector error caused by being offline comes back to the model as "no internet access" (`NoInternet.toolError`), so it tells the user instead of trying again.
+
 ## Changes and the activity panel
 
 Before a write or edit runs, `ProjectTools.changePreview` works out the change as a diff (`LineDiff`). The change is attached to the tool call only when the edit succeeds. In Code mode, the activity panel (`macOS/ActivityPanel.swift`) lists tool calls, background tasks, subagents, and changed files.
+
+## Replies on screen
+
+`MarkdownBlocks` splits a reply into headings, bullets, code, tables, and charts. A `chart` code block holding valid JSON (`ChartSpec`: a `type` of bar, line, or pie, an optional `title`, and up to 50 `points` of a label and a number) is drawn with Swift Charts in `ChartBlockView`. Anything else stays a code block. The Charts skill in `Shared/Models/Skills.swift` teaches the model the format.
+
+Under a finished reply:
+- its tokens (`TokenUsage`): read from the stream when the server sends them, otherwise estimated by `TokenEstimate` and marked as an estimate;
+- the buttons (`MessageActions`): copy, fork, pin, and reply;
+- the time (`ReplyTime`).
+
+`/usage` is answered in the chat from the saved counts (`UsageReport`), and is never sent to Gatita. `TranscriptView` decides how much besides the text shows. Your own instructions (`CustomInstructions`) are added before the skill's instructions on every reply. A reply that leaks a control token is stopped as soon as the token arrives (`ReplyCheck.stopsStream`).
+
+In Code mode on the Mac, `macOS/ProjectBar.swift` shows the folder and the git worktree and branch, read by `RepoStateLoader` and parsed by `GitWorktrees`.
 
 ## How a request flows
 
 1. `ChatViewModel.send` adds the message and starts a `GatitaClient` with the tools for this host.
 2. `GatitaClient.stream` sends the chat to `POST /v1/chat/completions` with `stream: true`, and reads the reply as it arrives.
 3. The model writes tool calls as `<gatita-tool>` blocks in its text. The client stops at the first complete block, runs it through `ProjectTools.execute`, and sends the result back as `<gatita-tool-result>`. `ask_user` ends the turn and shows the question.
-4. Text, reasoning, and tool events come back as `StreamEvent`s and update the reply on screen.
+4. Text, reasoning, and tool events come back as `StreamEvent`s and update the reply on screen. Tools run off the main actor (`ProjectTools.execute` is `@concurrent`), so a long command does not block the window. An HTTP 429 is waited out (`RateLimit`: the Retry-After header or the body's `retryAfter`, at most 75 seconds, twice per turn) and the turn sent again; the wait reaches the chat as a `.waiting` event and a countdown. A turn with no tool call is judged by `TurnEnding`: if it wrote nothing, hit the length limit, was cut off inside a tool block, or ended in a colon with no tool call, the client asks the model to go on (at most `GatitaClient.maxNudges` times), and an ending that stays bad becomes a `GatitaError.endedEarly` with the reason. A tool block whose closing tag is missing still runs when its JSON is whole. Every tool reads its arguments with `ToolArguments`, which accepts text, numbers, and lists, and repairs raw line breaks in strings, a code fence or words around the object, trailing commas, and the OpenAI `{"name", "arguments"}` shape. A failed call's error says what would work: the tool names (`ProjectTools.toolNames`, read from the instructions), the allowed commands, or files with the same name. `ToolRepeat` adds a note to the result of a call that repeats the one before it; the note goes to the model only.
 5. A host that is serving a client does the same, and sends each piece to the client as a `RemoteMessage.chunk` over MultipeerConnectivity, then the whole reply as a `response`. `ReplyAssembler` builds the reply on the client side.
 
 Replies with leaked control tokens (such as `<|close|>`) are dropped and a failure report is written.
+
+`Connectivity` (`Shared/Networking/Connectivity.swift`) watches the network path with `NWPathMonitor`. While there is none, the chat shows a "No internet access" banner, and `ChatViewModel.send` answers a new message with "Error: No internet access." without contacting the server (except in the PC tab, which talks to the Mac over the local network). A request that fails with an offline error gets the same message. Offline errors and rate limits write no failure report, since neither is a bug.
 
 ## Storage
 
@@ -88,6 +113,7 @@ Everything stays on the device. Nothing is sent to a service other than the Gati
 - [002](decisions/002-per-os-folders.md): one folder per operating system for OS-only code.
 - [003](decisions/003-hosted-shop-deferred.md): the hosted shop waits for a reviewed, signed catalog.
 - [004](decisions/004-tvos-and-watchos-transport.md): how tvOS and watchOS clients reach a host (open).
+- [007](decisions/007-public-api-connectors.md): connectors for free public services, with no keys.
 
 ## Tests
 

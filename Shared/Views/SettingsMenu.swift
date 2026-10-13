@@ -8,6 +8,7 @@ import SwiftUI
 /// Settings as a main menu. The account and usage are at the top. Each part of the app has its own page.
 struct HostSettingsView: View {
     @Bindable var viewModel: ChatViewModel
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
@@ -26,6 +27,12 @@ struct HostSettingsView: View {
                 }
 
                 Section("Features") {
+                    NavigationLink {
+                        InstructionsSettingsView(viewModel: viewModel)
+                    } label: {
+                        menuRow("Instructions", "text.badge.checkmark",
+                                subtitle: viewModel.customInstructions.isEmpty ? "None" : "Read before every reply")
+                    }
                     NavigationLink {
                         PairingSettingsView(viewModel: viewModel)
                     } label: {
@@ -57,6 +64,11 @@ struct HostSettingsView: View {
 
                 Section("App") {
                     NavigationLink {
+                        TranscriptSettingsView(viewModel: viewModel)
+                    } label: {
+                        menuRow("Transcript view", "text.alignleft", subtitle: viewModel.transcriptView.title)
+                    }
+                    NavigationLink {
                         AboutSettingsView()
                     } label: {
                         menuRow("About", "info.circle", subtitle: AppVersion.display)
@@ -71,6 +83,14 @@ struct HostSettingsView: View {
             .scrollContentBackground(.hidden)
             .background(Theme.background)
             .navigationTitle("Settings")
+            #if os(macOS)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                        .keyboardShortcut(.cancelAction)
+                }
+            }
+            #endif
         }
     }
 
@@ -445,5 +465,47 @@ struct LogsSettingsView: View {
         .scrollContentBackground(.hidden)
         .background(Theme.background)
         .navigationTitle("Logs and analytics")
+    }
+}
+
+/// How much of each reply the chat shows.
+struct TranscriptSettingsView: View {
+    @Bindable var viewModel: ChatViewModel
+
+    var body: some View {
+        List {
+            Section {
+                Picker("Transcript view", selection: $viewModel.transcriptView) {
+                    ForEach(TranscriptView.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.inline)
+            } footer: {
+                Text("Normal shows only what Gatita writes. Thinking adds its thinking and tool calls, folded. Verbose shows everything open.")
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(Theme.background)
+        .navigationTitle("Transcript view")
+    }
+}
+
+/// Your own instructions. Gatita reads them before every reply, the way a system prompt works.
+struct InstructionsSettingsView: View {
+    @Bindable var viewModel: ChatViewModel
+
+    var body: some View {
+        List {
+            Section {
+                TextEditor(text: $viewModel.customInstructions)
+                    .frame(minHeight: 180)
+            } header: {
+                Text("Your instructions")
+            } footer: {
+                Text("Gatita reads these before every reply, for example how to answer or what to call you. Up to \(CustomInstructions.maxCharacters) characters.")
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(Theme.background)
+        .navigationTitle("Instructions")
     }
 }

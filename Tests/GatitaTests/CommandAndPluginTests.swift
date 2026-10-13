@@ -109,6 +109,17 @@ final class CommandAndPluginTests: XCTestCase {
         XCTAssertTrue(connectors.allSatisfy { $0.connectorID != nil })
     }
 
+    func testEveryConnectorIsInTheShop() {
+        let offered = Shop.items.filter { $0.kind == .connector }.compactMap(\.connectorID)
+        XCTAssertEqual(offered, Connectors.catalog.map(\.id))
+        XCTAssertNotNil(Shop.items.first { $0.id == "github-connector" }, "existing ids stay the same")
+    }
+
+    func testBuiltInSkillsDoNotShareAnIdWithShopSkills() {
+        let shopSkills = Shop.items.compactMap { Shop.manifest(of: $0)?.skills }.flatMap { $0 }.map(\.id)
+        XCTAssertTrue(Set(shopSkills).isDisjoint(with: Skills.all.map(\.id)), "\(shopSkills)")
+    }
+
     func testInstallingAShopPluginWritesAFolderThatLoadsAndRemovingDeletesIt() throws {
         let shopDir = temporaryFolder(self, name: "gatita-shop")
         let plugin = Shop.items.first { $0.kind == .plugin }!

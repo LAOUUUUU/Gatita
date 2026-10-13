@@ -25,6 +25,13 @@ final class MarkdownAndReplyTests: XCTestCase {
                        [.paragraph(text: "**App/** — text"), .bullet(text: "item")])
     }
 
+    func testAStreamStopsAsSoonAsAControlTokenArrives() {
+        XCTAssertTrue(ReplyCheck.stopsStream(at: "Here is the answer<|close|>"))
+        XCTAssertTrue(ReplyCheck.stopsStream(at: String(repeating: "a", count: 500) + "<|im_end|>"))
+        XCTAssertFalse(ReplyCheck.stopsStream(at: "A normal reply with a pipe |> in code"))
+        XCTAssertFalse(ReplyCheck.stopsStream(at: ""))
+    }
+
     func testAReplyWithALeakedControlTokenIsCaught() {
         XCTAssertTrue(ReplyCheck.isCorrupted("approximately<|close|> mechanism"))
         XCTAssertEqual(ReplyCheck.stripControlTokens("hi<|close|> there"), "hi there")

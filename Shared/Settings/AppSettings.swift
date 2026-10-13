@@ -15,6 +15,8 @@ nonisolated struct AppSettings: Codable, Equatable, Sendable {
     var skillID: String
     var mode: GatitaMode
     var keepAwake: Bool
+    var transcriptView: TranscriptView
+    var customInstructions: String
 
     init(projectRoot: String = "",
          model: String = "gatita-7.1-max",
@@ -23,7 +25,9 @@ nonisolated struct AppSettings: Codable, Equatable, Sendable {
          allowCommands: Bool = false,
          skillID: String = "none",
          mode: GatitaMode = .code,
-         keepAwake: Bool = false) {
+         keepAwake: Bool = false,
+         transcriptView: TranscriptView = .normal,
+         customInstructions: String = "") {
         self.projectRoot = projectRoot
         self.model = model
         self.connectors = connectors
@@ -32,10 +36,12 @@ nonisolated struct AppSettings: Codable, Equatable, Sendable {
         self.skillID = skillID
         self.mode = mode
         self.keepAwake = keepAwake
+        self.transcriptView = transcriptView
+        self.customInstructions = customInstructions
     }
 
     private enum CodingKeys: String, CodingKey {
-        case projectRoot, model, connectors, allowWrites, allowCommands, skillID, mode, keepAwake
+        case projectRoot, model, connectors, allowWrites, allowCommands, skillID, mode, keepAwake, transcriptView, customInstructions
     }
 
     /// Missing keys take their defaults, so a settings file from an older version still loads.
@@ -50,6 +56,8 @@ nonisolated struct AppSettings: Codable, Equatable, Sendable {
         skillID = try values.decodeIfPresent(String.self, forKey: .skillID) ?? defaults.skillID
         mode = try values.decodeIfPresent(GatitaMode.self, forKey: .mode) ?? defaults.mode
         keepAwake = try values.decodeIfPresent(Bool.self, forKey: .keepAwake) ?? defaults.keepAwake
+        transcriptView = try values.decodeIfPresent(TranscriptView.self, forKey: .transcriptView) ?? defaults.transcriptView
+        customInstructions = try values.decodeIfPresent(String.self, forKey: .customInstructions) ?? defaults.customInstructions
     }
 }
 

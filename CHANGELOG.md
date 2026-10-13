@@ -8,6 +8,20 @@ Gatita uses three numbers, MAJOR.MINOR.PATCH, plus a channel while it is not fin
 
 No number resets. Each one keeps counting up, so after 0.0.2, a release with new models is 0.1.3, and a big refactor after that is 1.2.4.
 
+## 0.0.6 alpha
+
+Connectors, skills, better tool calling, and a "No internet access" error.
+
+- **Connectors.** Seven new ones that need no key or sign-in and work on every device: Weather, Wikipedia, Dictionary, Currency rates, Packages (npm, PyPI, crates.io, and Go), Stack Overflow, and Public GitHub repos. Each stays off until you turn it on or type `!name`. The Shop now lists every connector, Calendar included.
+- **Skills.** Ten new: Debug, Refactor, Commit message, Write docs, Security check, Check dependencies, Research, Summarize, Study helper, and Writing help.
+- **No internet.** A banner shows while the device is offline, and a message sent then gets "Error: No internet access." What you typed stays in the prompt box.
+- **Rate limits.** When the API's rate limit is reached, the reply waits as long as the server asks, with a countdown, and tries again instead of failing.
+- **Tool calling.** Tools run off the main thread, so the window no longer freezes while a command runs. Broken tool calls are repaired (line breaks inside text, code fences, trailing commas, and the OpenAI shape), and errors say what would work. New `read_files` and `find_files` tools; `search_text` can ignore case and stay in one folder. A reply can make up to 40 rounds of tool calls. A reply that ends early is asked to go on, then says why it ended.
+- **Replies.** Markdown tables, and bar, line, and pie charts with the Charts skill. Under each reply: its token count, buttons to copy, fork, pin, and reply, and the time. `/usage` shows the totals. A reply stops the moment a control token shows up.
+- **Settings.** Your own instructions, read before every reply. Transcript view: Normal, Thinking, or Verbose.
+- **Mac.** The Settings and Shop sheets have a Done button. In Code mode, a bar above the prompt shows the folder, the git worktree and branch, and running background tasks.
+- **Fixes.** `/usage` in an empty chat no longer saves an empty chat. A message refused for a missing API key keeps its text. `task_status` waits for a running task, so Gatita no longer polls it in a loop.
+
 ## 0.0.5 alpha
 
 Pairing codes, a PC tab, and connection status.

@@ -12,6 +12,10 @@ nonisolated enum MarkdownBlock: Equatable, Sendable {
     case bullet(text: String)
     case numbered(number: Int, text: String)
     case code(language: String, text: String)
+    /// A pipe table: the header cells, then one list of cells per row.
+    case table(header: [String], rows: [[String]])
+    /// A chart block that holds valid chart data.
+    case chart(ChartSpec)
 }
 
 /// Splits a reply into blocks. It handles the common cases a chat reply uses; it is not a full CommonMark parser.
@@ -45,7 +49,23 @@ nonisolated enum MarkdownBlocks {
                     index += 1
                 }
                 index += 1 // skip the closing fence, if there is one
-                blocks.append(.code(language: language, text: code.joined(separator: "\n")))
+                let body = code.joined(separator: "\n")
+                if language == "chart", let spec = ChartSpec.parse(body) {
+                    blocks.append(.chart(spec))
+                } else {
+                    blocks.append(.code(language: language, text: body))
+                }
+            } else if trimmed.contains("|"), index < lines.count, isSeparator(lines[index]) {
+                flushParagraph()
+                let header = cells(trimmed)
+                index += 1 // the separator row
+                var rows: [[String]] = []
+                while index < lines.count, lines[index].contains("|"),
+                      !lines[index].trimmingCharacters(in: .whitespaces).isEmpty {
+                    rows.append(cells(lines[index]))
+                    index += 1
+                }
+                blocks.append(.table(header: header, rows: rows))
             } else if let heading = headingBlock(trimmed) {
                 flushParagraph()
                 blocks.append(heading)
@@ -70,6 +90,23 @@ nonisolated enum MarkdownBlocks {
         let rest = trimmed.dropFirst(hashes.count)
         guard rest.first == " " else { return nil }
         return .heading(level: hashes.count, text: rest.dropFirst().trimmingCharacters(in: .whitespaces))
+    }
+
+    /// "| a | b |" becomes ["a", "b"]. The outer pipes are optional.
+    static func cells(_ line: String) -> [String] {
+        var text = line.trimmingCharacters(in: .whitespaces)
+        if text.hasPrefix("|") { text.removeFirst() }
+        if text.hasSuffix("|") { text.removeLast() }
+        return text.components(separatedBy: "|").map { $0.trimmingCharacters(in: .whitespaces) }
+    }
+
+    /// The row under a table header: cells made of dashes, with optional colons, such as "|---|:--:|".
+    static func isSeparator(_ line: String) -> Bool {
+        let parts = cells(line)
+        return !parts.isEmpty && parts.allSatisfy { cell in
+            let core = cell.trimmingCharacters(in: CharacterSet(charactersIn: ":"))
+            return !core.isEmpty && core.allSatisfy { $0 == "-" }
+        }
     }
 
     /// "3. item" becomes a numbered item.

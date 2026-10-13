@@ -92,6 +92,11 @@ struct HostInputBar: View {
             if !suggestions.isEmpty && openPanel == nil {
                 suggestionList
             }
+            #if os(macOS)
+            if viewModel.mode == .code {
+                ProjectBar(viewModel: viewModel)
+            }
+            #endif
             promptRow
         }
         .frame(maxWidth: 760)

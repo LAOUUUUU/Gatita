@@ -34,7 +34,7 @@ final class ModeTests: XCTestCase {
         XCTAssertFalse(tools.instructions.contains("list_reports"))
         XCTAssertFalse(tools.instructions.contains("ask_user"))
         XCTAssertTrue(tools.instructions.contains("web_"))
-        XCTAssertEqual(tools.run(name: "list_reports", arguments: "{}"), "error: unknown tool list_reports")
+        XCTAssertTrue(tools.run(name: "list_reports", arguments: "{}").hasPrefix("error: unknown tool list_reports."))
     }
 
     func testOtherConnectorsWorkInBothModes() {
