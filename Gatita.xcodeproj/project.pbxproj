@@ -17,6 +17,23 @@
 		15A378DBD10E4C21AF46638E /* GatitaTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GatitaTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		EA07F82D3EF0091F07A36A45 /* Exceptions for "iPadOS" folder in "Gatita" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				.gitkeep,
+			);
+			target = 08532C6D307857E600E3BF67 /* Gatita */;
+		};
+		D3DC29EC8B9608572B775CC9 /* Exceptions for "visionOS" folder in "Gatita" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				.gitkeep,
+			);
+			target = 08532C6D307857E600E3BF67 /* Gatita */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		08532C7D30785EF500E3BF67 /* App */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
@@ -41,6 +58,27 @@
 		BD2ACC3966804C519CD25946 /* GatitaTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Tests/GatitaTests;
+			sourceTree = "<group>";
+		};
+		A8BBD7608F75C5CEAC96EBF2 /* iOS */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = iOS;
+			sourceTree = "<group>";
+		};
+		FA596BF6D7996335B7CBBC8E /* iPadOS */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				EA07F82D3EF0091F07A36A45 /* Exceptions for "iPadOS" folder in "Gatita" target */,
+			);
+			path = iPadOS;
+			sourceTree = "<group>";
+		};
+		D0627F0C9E66F5B1F809F0BD /* visionOS */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				D3DC29EC8B9608572B775CC9 /* Exceptions for "visionOS" folder in "Gatita" target */,
+			);
+			path = visionOS;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -69,6 +107,9 @@
 				08532C7F30785F1100E3BF67 /* Shared */,
 				08532C8530785F8A00E3BF67 /* watchOS */,
 				9CD9F5D23D4F4920889E701D /* macOS */,
+				A8BBD7608F75C5CEAC96EBF2 /* iOS */,
+				FA596BF6D7996335B7CBBC8E /* iPadOS */,
+				D0627F0C9E66F5B1F809F0BD /* visionOS */,
 				08532C8930785FAE00E3BF67 /* Gatita.app */,
 				BD2ACC3966804C519CD25946 /* GatitaTests */,
 				15A378DBD10E4C21AF46638E /* GatitaTests.xctest */,
@@ -93,6 +134,9 @@
 				08532C7F30785F1100E3BF67 /* Shared */,
 				08532C8530785F8A00E3BF67 /* watchOS */,
 				9CD9F5D23D4F4920889E701D /* macOS */,
+				A8BBD7608F75C5CEAC96EBF2 /* iOS */,
+				FA596BF6D7996335B7CBBC8E /* iPadOS */,
+				D0627F0C9E66F5B1F809F0BD /* visionOS */,
 			);
 			name = Gatita;
 			packageProductDependencies = (
