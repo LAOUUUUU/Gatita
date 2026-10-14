@@ -37,6 +37,9 @@ struct QuickPanelSettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                if viewModel.doubleCommandOpensPanel, controller.doubleTapStatus == .needsPermission {
+                    SettingsNote(Text("Gatita is in the list and switched on, but ⌘⌘ still does nothing? macOS ties a permission to one exact build of Gatita, so a rebuilt copy needs it again. Switch Gatita off and on, or remove it with − and press Open Input Monitoring again."))
+                }
                 SettingsNote(Text("⌃⌘G and Chat, then Quick Panel, always open it too. Gatita only reads whether ⌘ was pressed on its own; it never records what you type."))
             }
 
@@ -56,6 +59,9 @@ struct QuickPanelSettingsView: View {
                         }
                         .buttonStyle(GatitaButtonStyle(.primary))
                     }
+                }
+                if !ScreenCapture.isAllowed {
+                    SettingsNote(Text("Gatita is in the list and switched on, but screenshots still fail? Switch it off and on again, or remove it with − and press Open Screen Recording again. macOS ties the permission to one exact build."))
                 }
                 SettingsNote(Text("Like Claude's quick entry: ⌘⌘ opens the panel and dims the screens. Drag over an area, or click a window, and the screenshot is attached to the panel, which is left out of the picture. Escape, or a click on the panel, skips it. The camera button takes one any time. Nothing is sent until you press Return."))
             } header: {

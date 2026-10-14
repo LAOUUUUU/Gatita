@@ -33,12 +33,15 @@ final class QuickPanelController {
     func start(viewModel: ChatViewModel) {
         // Tests run inside the app; they must not watch keys or bring up permission prompts.
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
-        // macOS is asked for Input Monitoring once on its own. A Debug build loses the permission each time it is
-        // rebuilt, and asking on every launch would nag, so after that Settings shows how to turn it back on.
-        let askedKey = "askedForInputMonitoring"
-        let ask = !UserDefaults.standard.bool(forKey: askedKey)
-        UserDefaults.standard.set(true, forKey: askedKey)
+        // macOS keeps these permissions per code identity, and a build signed ad hoc is a new identity after every
+        // rebuild. So macOS is asked again whenever this build is not the one that asked last time (but not on every
+        // launch, which would nag). A build signed with a certificate keeps its permissions and is not asked again.
+        let ask = BuildIdentity.askOnce("inputMonitoringAskedFor")
         setDoubleCommand(viewModel.doubleCommandOpensPanel, viewModel: viewModel, ask: ask)
+        if viewModel.doubleCommandOpensPanel, viewModel.doubleCommandTakesScreenshot, !ScreenCapture.isAllowed,
+           BuildIdentity.askOnce("screenRecordingAskedFor") {
+            ScreenCapture.requestPermission()
+        }
         guard hotKey == nil else { return }
         hotKey = GlobalHotKey(keyCode: kVK_ANSI_G, modifiers: cmdKey | controlKey) { [weak self] in
             self?.toggle(viewModel)
@@ -90,10 +93,8 @@ final class QuickPanelController {
         if panel?.isVisible != true { show(viewModel) }
         guard let model else { return }
         guard ScreenCapture.isAllowed else {
-            // Ask macOS once on its own; after that the panel's note opens the right page.
-            let askedKey = "askedForScreenRecording"
-            if !UserDefaults.standard.bool(forKey: askedKey) {
-                UserDefaults.standard.set(true, forKey: askedKey)
+            // Ask macOS once per build on its own; after that the panel's note opens the right page.
+            if BuildIdentity.askOnce("screenRecordingAskedFor") {
                 ScreenCapture.requestPermission()
             }
             model.needsScreenPermission = true
