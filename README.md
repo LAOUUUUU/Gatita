@@ -81,6 +81,19 @@ Swift packages (see [decision 009](docs/decisions/009-swift-packages.md)):
 
 The Debug build turns off App Sandbox, so the Mac can read your project folder and reach the network. The Release build keeps the sandbox on. It allows outgoing connections (for the API), incoming connections (for talking to your other devices), calendar access, the microphone (for voice input), and reading and writing files you choose (for exporting a chat). The Apple Watch source is in the repo but is not built yet.
 
+### Keeping macOS permissions between builds
+
+macOS keeps Input Monitoring (⌘⌘ in other apps), Screen Recording, and the Keychain's "Always Allow" for one code identity. A build signed ad hoc, which is what Xcode makes without a certificate, is a new identity after every rebuild, so macOS forgets all three, and Gatita asks again when it starts. To stop that, sign every build with the same certificate: an Apple Development one (Xcode, Settings, Accounts, Manage Certificates) or a local self-signed one. `scripts/install_app.py` builds the Debug app, signs it, puts it in /Applications, and opens it:
+
+```bash
+python3 scripts/install_app.py --identities        # what it can sign with, and which one it would use
+python3 scripts/install_app.py --create-identity   # once, if you have none: makes "Gatita Local Signing", then installs
+python3 scripts/install_app.py                     # every time after: build, sign, install, relaunch
+python3 scripts/install_app.py --identity "Name"   # sign with a certificate you pick
+```
+
+The first time it signs, macOS asks whether `codesign` may use the key: choose Always Allow. With no certificate it signs ad hoc and says so. A self-signed certificate is listed as "not valid" by `security find-identity -v`, but it signs fine and keeps the identity steady.
+
 ## Setup
 
 - In Settings, paste your Gatita API key. It is saved in the Keychain, never in a file.
@@ -89,7 +102,7 @@ The Debug build turns off App Sandbox, so the Mac can read your project folder a
 - Hosts talk to other devices on your local network. The first time, the system asks for local network access. Allow it, or those devices cannot reach the host.
 - Calendar: the first time you ask about your schedule, macOS asks for calendar access. Allow it under Privacy & Security, Calendars.
 - Voice input: the first time you press the mic, the system asks for microphone and speech recognition access.
-- The quick panel opens with ⌘⌘ or ⌃⌘G. ⌘⌘ needs Input Monitoring permission (System Settings, Privacy & Security, Input Monitoring); Gatita asks once, and Settings, then Quick panel, shows whether it works and opens that page. Gatita only notices whether ⌘ was pressed on its own; it never records what you type. A Debug build loses the permission each time it is rebuilt, so turn it on again after an update. ⌃⌘G and the Chat menu need no permission. Screenshots need Screen Recording permission (Privacy & Security, Screen Recording); Gatita asks once, and the panel and Settings, then Quick panel, say when it is missing. "⌘⌘ starts with a screenshot" can be turned off there.
+- The quick panel opens with ⌘⌘ or ⌃⌘G. ⌘⌘ needs Input Monitoring permission (System Settings, Privacy & Security, Input Monitoring); Gatita asks again whenever it is a different build from the one that asked last time, and Settings, then Quick panel, shows whether it works and opens that page. Gatita only notices whether ⌘ was pressed on its own; it never records what you type. macOS ties the permission to one code identity, so a build signed ad hoc (what Xcode makes without a certificate) loses it after every rebuild; see "Keeping macOS permissions between builds" above. ⌃⌘G and the Chat menu need no permission. Screenshots need Screen Recording permission (Privacy & Security, Screen Recording); Gatita asks again for each new build, and the panel and Settings, then Quick panel, say when it is missing. "⌘⌘ starts with a screenshot" can be turned off there.
 - Your own skills are saved in `~/Library/Application Support/Gatita/my-skills.json`.
 
 ## Plugins
