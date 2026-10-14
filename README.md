@@ -119,6 +119,15 @@ python3 scripts/release.py release 0.0.5
 
 Use `bump` to change only the version, and `build` to rebuild the current version after a fix. Run `python3 scripts/release.py --help` for the options. The script does not commit, tag, or publish. Add the changelog entry before you build.
 
+A build takes about 10 minutes: the tests, the Mac app, the iPhone and iPad app, then packaging. While it runs, one line shows the step, a bar, how far along the whole build is, and the time so far, and each finished step leaves a ✓ line with its time:
+
+```text
+✓ Tests  2:08
+Step 2 of 4  Mac app  ██████████░░░░░░░░░░░░░░░░░░░░  35%  3:31
+```
+
+The percentage is an estimate from the last build's step times and log lengths (kept in `~/Documents/Gatita-releases/release-steps.json`), so it gets better after each build. The xcodebuild logs go to a temporary folder printed at the start; when a step fails, its last 25 lines are shown.
+
 ## Tests
 
 Run the unit tests on the Mac:

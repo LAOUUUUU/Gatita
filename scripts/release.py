@@ -11,16 +11,23 @@
 `build` writes the macOS zip, the iPhone and iPad .ipa, SHA256SUMS.txt, and the Sideloadly guide to
 ~/Documents/Gatita-releases/<version>-alpha/. Run it again to rebuild a version after a fix; existing
 files there are replaced. The script never commits, tags, or publishes.
+
+While it builds, one line shows the step, a bar, how far along the whole build is, and the time so far.
+The percentage comes from the last build's log length and step times, kept in
+~/Documents/Gatita-releases/release-steps.json.
 """
 
 import argparse
 import hashlib
+import json
 import plistlib
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -29,6 +36,15 @@ CHANGELOG = REPO / "CHANGELOG.md"
 TEMPLATE = REPO / "scripts" / "release-templates" / "INSTALL-IPA-WITH-SIDELOADLY.md"
 RELEASES = Path.home() / "Documents" / "Gatita-releases"
 SCHEME = "Gatita"
+STEP_HISTORY = RELEASES / "release-steps.json"
+
+# What each step takes when there is no earlier build to go by: log lines and seconds (0.0.7, from scratch).
+USUAL_STEPS = {
+    "test": {"lines": 7880, "seconds": 128},
+    "mac": {"lines": 2090, "seconds": 222},
+    "ios": {"lines": 2600, "seconds": 236},
+    "package": {"lines": 0, "seconds": 10},
+}
 
 VERSION_PATTERN = re.compile(r"^\d+\.\d+\.\d+$")
 MARKETING = re.compile(r"MARKETING_VERSION = ([^;]+);")
@@ -68,15 +84,157 @@ def check_changelog(version: str) -> None:
         raise SystemExit(f"CHANGELOG.md has no '## {version} alpha' section. Add the release notes first.")
 
 
-def run(command: list[str], log: Path, dry_run: bool, cwd: Path = REPO) -> None:
-    print("$ " + " ".join(command))
-    if dry_run:
-        return
-    with log.open("w", encoding="utf-8") as handle:
-        result = subprocess.run(command, cwd=cwd, stdout=handle, stderr=subprocess.STDOUT)
-    if result.returncode != 0:
-        tail = "\n".join(log.read_text(encoding="utf-8", errors="replace").splitlines()[-25:])
-        raise SystemExit(f"failed ({result.returncode}): {' '.join(command)}\nlast lines of {log}:\n{tail}")
+def bar(fraction: float, width: int) -> str:
+    filled = int(max(0.0, min(1.0, fraction)) * width)
+    return "█" * filled + "░" * (width - filled)
+
+
+def duration(seconds: float) -> str:
+    whole = int(seconds)
+    return f"{whole // 60}:{whole % 60:02d}"
+
+
+def step_fraction(lines: int, usual_lines: int, seconds: float, usual_seconds: float) -> float:
+    """How far a step is: its log lines and its time, each against the last build's, averaged. xcodebuild logs
+    in bursts and then goes quiet for minutes while it optimizes, so time keeps the bar moving. A step with no
+    log goes by time alone. It stays at 99% until the step ends."""
+    parts = [min(part, 0.99) for part, usual in ((lines, usual_lines), (seconds, usual_seconds)) if usual > 0
+             for part in [part / usual]]
+    return sum(parts) / len(parts) if parts else 0
+
+
+def overall(weights: list[float], step: int, fraction: float) -> float:
+    """How far the whole build is, with each step counted by how long it usually takes."""
+    total = sum(weights)
+    if total <= 0:
+        return 0
+    done = sum(weights[:step]) + (weights[step] * fraction if step < len(weights) else 0)
+    return done / total
+
+
+def status_line(number: int, count: int, title: str, fraction: float, seconds: float, width: int = 30) -> str:
+    return f"Step {number} of {count}  {title}  {bar(fraction, width)}  {int(fraction * 100)}%  {duration(seconds)}"
+
+
+def load_history(path: Path) -> dict:
+    try:
+        history = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return history if isinstance(history, dict) else {}
+
+
+def expected(history: dict, key: str) -> dict:
+    """The last build's log lines and seconds for a step, or the usual ones."""
+    step = history.get(key)
+    if isinstance(step, dict) and isinstance(step.get("lines"), int) and isinstance(step.get("seconds"), (int, float)):
+        return {"lines": step["lines"], "seconds": step["seconds"]}
+    return USUAL_STEPS[key]
+
+
+def remember_step(path: Path, key: str, lines: int, seconds: float) -> None:
+    history = load_history(path)
+    history[key] = {"lines": lines, "seconds": round(seconds)}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(history, indent=2) + "\n", encoding="utf-8")
+
+
+class Progress:
+    """Shows the step, a bar, the percentage of the whole build, and the time so far. In a terminal it is one
+    line redrawn five times a second; elsewhere (a pipe or a log) a line when each step starts and ends."""
+
+    def __init__(self, steps: list[tuple[str, str]], history_path: Path, stream=None):
+        self.steps = steps
+        self.keys = [key for key, _ in steps]
+        self.history_path = history_path
+        self.history = load_history(history_path)
+        self.weights = [expected(self.history, key)["seconds"] for key in self.keys]
+        self.stream = stream or sys.stdout
+        self.live = self.stream.isatty()
+        self.started = time.monotonic()
+
+    def line(self, index: int, fraction_of_step: float) -> str:
+        fraction = overall(self.weights, index, fraction_of_step)
+        seconds = time.monotonic() - self.started
+        number, title = index + 1, self.steps[index][1]
+        room = shutil.get_terminal_size().columns - len(status_line(number, len(self.steps), title, fraction, seconds, 0))
+        return status_line(number, len(self.steps), title, fraction, seconds, max(10, min(30, room - 1)))
+
+    def show(self, text: str, final: bool = False) -> None:
+        if self.live:
+            self.stream.write("\r\033[K" + text + ("\n" if final else ""))
+        else:
+            self.stream.write(text + "\n")
+        self.stream.flush()
+
+    def follow(self, index: int, worker: threading.Thread, lines: list[int], started: float) -> None:
+        """Redraws the line until the worker is done."""
+        usual = expected(self.history, self.keys[index])
+        while worker.is_alive():
+            worker.join(0.2)
+            if self.live:
+                fraction = step_fraction(lines[0], usual["lines"], time.monotonic() - started, usual["seconds"])
+                self.show(self.line(index, fraction))
+
+    def run(self, key: str, command: list[str], log: Path, cwd: Path = REPO) -> None:
+        """Runs one xcodebuild step, writing its output to the log and counting lines for the bar."""
+        index = self.keys.index(key)
+        started = time.monotonic()
+        lines = [0]
+        self.show(self.line(index, 0))
+        with log.open("w", encoding="utf-8") as handle:
+            process = subprocess.Popen(command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                       text=True, errors="replace")
+
+            def copy() -> None:
+                for text in process.stdout:
+                    handle.write(text)
+                    lines[0] += 1
+
+            reader = threading.Thread(target=copy, daemon=True)
+            reader.start()
+            try:
+                self.follow(index, reader, lines, started)
+            except KeyboardInterrupt:
+                process.terminate()
+                self.show("stopped", final=True)
+                raise
+            code = process.wait()
+        if code != 0:
+            self.show(f"✗ {self.steps[index][1]}  {duration(time.monotonic() - started)}", final=True)
+            tail = "\n".join(log.read_text(encoding="utf-8", errors="replace").splitlines()[-25:])
+            raise SystemExit(f"failed ({code}): {' '.join(command)}\nlast lines of {log}:\n{tail}")
+        self.finished(index, lines[0], started)
+
+    def work(self, key: str, action):
+        """Runs a step done in Python, such as packaging, and returns what it returns."""
+        index = self.keys.index(key)
+        started = time.monotonic()
+        self.show(self.line(index, 0))
+        outcome = {}
+
+        def act() -> None:
+            try:
+                outcome["result"] = action()
+            except BaseException as error:  # handed to the main thread below
+                outcome["error"] = error
+
+        worker = threading.Thread(target=act, daemon=True)
+        worker.start()
+        self.follow(index, worker, [0], started)
+        if "error" in outcome:
+            self.show(f"✗ {self.steps[index][1]}  {duration(time.monotonic() - started)}", final=True)
+            raise outcome["error"]
+        self.finished(index, 0, started)
+        return outcome.get("result")
+
+    def finished(self, index: int, lines: int, started: float) -> None:
+        seconds = time.monotonic() - started
+        remember_step(self.history_path, self.keys[index], lines, seconds)
+        self.show(f"✓ {self.steps[index][1]}  {duration(seconds)}", final=True)
+
+    def finish(self) -> None:
+        self.show(f"Done  {bar(1, 30)}  100%  {duration(time.monotonic() - self.started)}", final=True)
 
 
 def bump(version: str, build: int | None, dry_run: bool) -> None:
@@ -119,21 +277,37 @@ def build(skip_tests: bool, dry_run: bool) -> None:
     print(f"building {version} (build {build_number}) into {out}")
     print(f"derived data and logs in {work}")
 
+    steps = []
     if not skip_tests:
-        run(["xcodebuild", "-project", "Gatita.xcodeproj", "-scheme", SCHEME,
-             "-destination", "platform=macOS", "-derivedDataPath", str(work / "test"),
-             "CODE_SIGNING_ALLOWED=NO", "test"], work / "test.log", dry_run)
-
-    run(["xcodebuild", "-project", "Gatita.xcodeproj", "-scheme", SCHEME, "-configuration", "Release",
-         "-destination", "platform=macOS", "-derivedDataPath", str(work / "mac"),
-         "CODE_SIGNING_ALLOWED=NO", "build"], work / "mac.log", dry_run)
-    run(["xcodebuild", "-project", "Gatita.xcodeproj", "-scheme", SCHEME, "-configuration", "Release",
-         "-destination", "generic/platform=iOS", "-derivedDataPath", str(work / "ios"),
-         "CODE_SIGNING_ALLOWED=NO", "build"], work / "ios.log", dry_run)
+        steps.append(("test", "Tests", ["xcodebuild", "-project", "Gatita.xcodeproj", "-scheme", SCHEME,
+                                        "-destination", "platform=macOS", "-derivedDataPath", str(work / "test"),
+                                        "CODE_SIGNING_ALLOWED=NO", "test"]))
+    steps.append(("mac", "Mac app", ["xcodebuild", "-project", "Gatita.xcodeproj", "-scheme", SCHEME,
+                                     "-configuration", "Release", "-destination", "platform=macOS",
+                                     "-derivedDataPath", str(work / "mac"), "CODE_SIGNING_ALLOWED=NO", "build"]))
+    steps.append(("ios", "iPhone and iPad app", ["xcodebuild", "-project", "Gatita.xcodeproj", "-scheme", SCHEME,
+                                                 "-configuration", "Release", "-destination", "generic/platform=iOS",
+                                                 "-derivedDataPath", str(work / "ios"), "CODE_SIGNING_ALLOWED=NO",
+                                                 "build"]))
     if dry_run:
+        for _, _, command in steps:
+            print("$ " + " ".join(command))
         print("dry run: nothing was built or written")
         return
 
+    progress = Progress([(key, title) for key, title, _ in steps] + [("package", "Packaging")], STEP_HISTORY)
+    for key, _, command in steps:
+        progress.run(key, command, work / f"{key}.log")
+    sums = progress.work("package", lambda: package(work, out, version, build_number))
+    progress.finish()
+
+    print(sums, end="")
+    print(f"done: {out}")
+    print("next: review the files, then commit and tag when you are ready. This script does not do that.")
+
+
+def package(work: Path, out: Path, version: str, build_number: int) -> str:
+    """Checks the built apps' versions, then writes the zip, the .ipa, the checksums, and the guide."""
     mac_app = work / "mac" / "Build" / "Products" / "Release" / f"{SCHEME}.app"
     ios_app = work / "ios" / "Build" / "Products" / "Release-iphoneos" / f"{SCHEME}.app"
     check_built_app(mac_app, version, build_number)
@@ -157,10 +331,7 @@ def build(skip_tests: bool, dry_run: bool) -> None:
     (out / "SHA256SUMS.txt").write_text(sums, encoding="utf-8")
     (out / "INSTALL-IPA-WITH-SIDELOADLY.md").write_text(
         TEMPLATE.read_text(encoding="utf-8").replace("{version}", version), encoding="utf-8")
-
-    print(sums, end="")
-    print(f"done: {out}")
-    print("next: review the files, then commit and tag when you are ready. This script does not do that.")
+    return sums
 
 
 def main() -> None:
