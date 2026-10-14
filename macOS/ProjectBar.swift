@@ -13,6 +13,7 @@ import SwiftUI
 struct ProjectBar: View {
     @Bindable var viewModel: ChatViewModel
     @State private var repo = RepoState.notARepo
+    @State private var roblox: RobloxProject?
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
@@ -21,6 +22,12 @@ struct ProjectBar: View {
         }
         .task(id: viewModel.projectRoot) {
             repo = await loadRepo()
+        }
+        .task(id: viewModel.projectRoot) {
+            roblox = nil
+            let found = await loadRoblox()
+            // A folder picked meanwhile cancels this task, and its late answer must not replace the newer one.
+            if !Task.isCancelled { roblox = found }
         }
     }
 
@@ -36,6 +43,11 @@ struct ProjectBar: View {
 
             if repo.isRepo {
                 branchMenu(compact: compact)
+            }
+
+            if let roblox {
+                pill(compact ? nil : "Roblox", icon: "gamecontroller")
+                    .help(roblox.summary(studioConnected: Self.studioIsConnected(viewModel.mcp.status)))
             }
 
             ForEach(runningTasks.prefix(3)) { task in
@@ -55,6 +67,15 @@ struct ProjectBar: View {
             .help("Choose a project folder")
 
             Spacer(minLength: 0)
+        }
+    }
+
+    /// Whether an MCP server for Roblox Studio is connected. The user picks the server's name, so any connected
+    /// server with "roblox" in its name counts.
+    static func studioIsConnected(_ statuses: [String: MCPHub.Status]) -> Bool {
+        statuses.contains { key, status in
+            if case .connected = status { return key.contains("roblox") }
+            return false
         }
     }
 
@@ -111,6 +132,11 @@ struct ProjectBar: View {
     private func loadRepo() async -> RepoState {
         guard !viewModel.projectRoot.isEmpty else { return .notARepo }
         return await RepoStateLoader.load(for: URL(fileURLWithPath: viewModel.projectRoot))
+    }
+
+    private func loadRoblox() async -> RobloxProject? {
+        guard !viewModel.projectRoot.isEmpty else { return nil }
+        return await RobloxProject.load(in: URL(fileURLWithPath: viewModel.projectRoot))
     }
 
     private func chooseFolder() {

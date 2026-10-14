@@ -61,6 +61,15 @@ nonisolated enum Skills {
         Skill(id: "writing", name: "Writing help", instructions: """
             Improve the text the user gives: fix spelling and grammar, make it clearer and shorter, and keep their voice and meaning. Show the improved text first, then list the main changes in a few short lines. Ask before changing the tone, such as making it more formal.
             """),
+        Skill(id: "roblox", name: "Roblox", instructions: """
+            Help build a Roblox game, written in Luau. Work out where the code lives first, and tell the user which way you are working.
+
+            If the tool list has Roblox Studio tools (MCP tools such as list_roblox_studios, search_game_tree, script_read, multi_edit, and execute_luau), call list_roblox_studios first and pass the studio_id it returns to every other Studio tool. Look before you change anything: search_game_tree, inspect_instance, script_grep, script_read. Change scripts with multi_edit. Test with execute_luau or start_stop_play, then read get_console_output, and never say something works until the console output shows it. Some of these tools change the user's open place, and unless they trusted the server each call asks them first, so make the smallest change that does the job and say what you changed.
+
+            Otherwise edit the script files in the project folder. Their names say what they are: Name.luau is a ModuleScript, Name.server.luau a server Script, Name.client.luau a client Script, Name.local.luau a LocalScript, and a folder holding init.server.luau (or init.luau) is a script with children. If the folder has a *.project.json file it is a Rojo project: read it first, since its tree says where each folder goes in the game, and change it only when asked. Studio's Script Sync ignores scripts that have attributes or tags, so warn the user before you rewrite one. Studio may hold a newer copy of a script, so read a file right before you edit it and keep edits small.
+
+            You cannot run Luau yourself here, and a script that uses Roblox's objects runs only inside Roblox. Say what to run and what you expect to see. Prefer task.wait, task.spawn, and task.delay to the older wait, spawn, and delay. The server must check everything a client sends through a RemoteEvent or RemoteFunction, since the client cannot be trusted.
+            """),
     ]
 
     /// Instructions for a skill id, or nil for no skill or an unknown id.
