@@ -35,13 +35,41 @@ struct MathBlockView: View {
 }
 
 /// Draws Mermaid diagrams with the BeautifulMermaid package, natively and in Gatita's colors.
-enum MermaidPicture {
+nonisolated enum MermaidPicture {
     static let theme = DiagramTheme(background: BMColor(hex: "#1C1C1E"), foreground: BMColor(hex: "#F2F2F2"),
                                     accent: BMColor(hex: "#F56B24"), transparent: true)
+    static let scale: CGFloat = 2
 
-    /// The diagram as a picture, or nil when it is a kind the package does not draw or does not parse.
+    /// The diagram as a picture, or nil when it is a kind the package does not draw or does not parse. Laid out
+    /// and drawn off the main thread.
     static func render(_ code: String) async -> BMImage? {
-        try? await MermaidRenderer.renderImageAsync(source: code, theme: theme)
+        let drawn = await Task.detached(priority: .userInitiated) { () -> (CGImage, CGSize)? in
+            guard let prepared = try? MermaidImageRenderer(theme: theme).prepare(from: code),
+                  let image = picture(of: prepared) else { return nil }
+            return (image, prepared.bounds.size)
+        }.value
+        guard let (image, size) = drawn else { return nil }
+        #if os(macOS)
+        return NSImage(cgImage: image, size: size)
+        #else
+        return UIImage(cgImage: image, scale: scale, orientation: .up)
+        #endif
+    }
+
+    /// Draws a laid-out diagram on a canvas whose y axis points down, as the package's drawing expects. The
+    /// package's own Mac picture uses a canvas whose y axis points up, so it came out upside down.
+    static func picture(of prepared: PreparedDiagram) -> CGImage? {
+        let bounds = prepared.bounds
+        let width = Int((bounds.width * scale).rounded(.up)), height = Int((bounds.height * scale).rounded(.up))
+        guard width > 0, height > 0,
+              let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        context.translateBy(x: 0, y: CGFloat(height))
+        context.scaleBy(x: scale, y: -scale)
+        context.translateBy(x: -bounds.minX, y: -bounds.minY)
+        prepared.render(context, bounds)
+        return context.makeImage()
     }
 }
 
