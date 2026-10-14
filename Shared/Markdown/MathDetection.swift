@@ -58,18 +58,30 @@ nonisolated enum MathDetection {
     }
 }
 
-/// Code fences drawn as something richer than code: Mermaid diagrams, and display math.
+/// Code fences drawn as something richer than code: Mermaid diagrams, display math, and SVG pictures.
 nonisolated enum RichCode {
     enum Kind: Equatable {
-        case code, diagram, math
+        case code, diagram, math, picture
     }
 
-    static func kind(language: String) -> Kind {
+    /// An SVG is a picture when the fence says svg, or says xml or nothing and holds one. HTML keeps its code
+    /// block and live preview.
+    static func kind(language: String, code: String = "") -> Kind {
         switch language.lowercased() {
         case "mermaid": .diagram
         case "math", "latex", "tex", "katex": .math
+        case "svg": .picture
+        case "xml", "": startsAsSVG(code) ? .picture : .code
         default: .code
         }
+    }
+
+    private static let svgStart = try! NSRegularExpression(
+        pattern: #"^\s*(<\?xml[^>]*\?>\s*)?(<!--[\s\S]*?-->\s*)*(<!doctype[^>]*>\s*)?<svg[\s>]"#, options: .caseInsensitive)
+
+    /// Whether the code starts with an <svg> element, after any XML declaration, comments, or doctype.
+    static func startsAsSVG(_ code: String) -> Bool {
+        svgStart.firstMatch(in: code, range: NSRange(code.startIndex..., in: code)) != nil
     }
 
     /// A math fence's text as one display equation for the LaTeX view.

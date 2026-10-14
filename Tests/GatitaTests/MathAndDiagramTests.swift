@@ -5,13 +5,6 @@
 
 import XCTest
 @testable import Gatita
-#if os(macOS)
-import AppKit
-typealias PlatformImage = NSImage
-#else
-import UIKit
-typealias PlatformImage = UIImage
-#endif
 
 /// Which text is drawn as math (LaTeX) and which code blocks as diagrams (Mermaid).
 final class MathAndDiagramTests: XCTestCase {
@@ -70,6 +63,30 @@ final class MathAndDiagramTests: XCTestCase {
         let red = rows.rowsWhere { red, green, blue, alpha in alpha > 200 && red > 200 && green < 60 && blue < 60 }
         XCTAssertFalse(red.isEmpty, "no red box in the picture")
         XCTAssertLessThan(Double(red.reduce(0, +)) / Double(red.count), Double(rows.height) / 2, "the red top box is in the bottom half")
+    }
+
+    func testDiagramLabelsAreDrawn() async throws {
+        // Labels are near-white (#F2F2F2) on dark boxes, so a labeled box has many bright pixels and an empty one
+        // almost none. On the iPad the labels once went missing; that path is checked on the simulator, since
+        // these tests run on the Mac.
+        let labeled = await MermaidPicture.render("graph TD\n    A[Hello world from Gatita]")
+        let empty = await MermaidPicture.render("graph TD\n    A[ ]")
+        let bright: (UInt8, UInt8, UInt8, UInt8) -> Bool = { red, green, blue, alpha in alpha > 200 && red > 200 && green > 200 && blue > 200 }
+        let withLabel = try XCTUnwrap(PixelRows(labeled)).rowsWhere(bright).count
+        let withoutLabel = try XCTUnwrap(PixelRows(empty)).rowsWhere(bright).count
+        XCTAssertGreaterThan(withLabel, withoutLabel + 100, "the label was not drawn")
+    }
+
+    func testLabelsOnLightBoxesAreDark() {
+        let dark = MermaidPicture.darkLabel
+        XCTAssertEqual(MermaidPicture.readableLabels("graph TD\n  A --> B\n  style A fill:#fde7ef"),
+                       "graph TD\n  A --> B\n  style A fill:#fde7ef,color:\(dark)")
+        XCTAssertEqual(MermaidPicture.readableLabels("    style A,B fill:#FFF,stroke:#333;"), "    style A,B fill:#FFF,stroke:#333,color:\(dark);")
+        XCTAssertEqual(MermaidPicture.readableLabels("classDef done fill:#e3f3ff"), "classDef done fill:#e3f3ff,color:\(dark)")
+        for unchanged in ["style A fill:#1a1a1a", "style A fill:#ffffff,color:#ff0000", "style A stroke:#fff",
+                          "A[fill:#fff]", "style A fill:white"] {
+            XCTAssertEqual(MermaidPicture.readableLabels(unchanged), unchanged)
+        }
     }
 
     func testADiagramItCannotDrawStaysCode() async {

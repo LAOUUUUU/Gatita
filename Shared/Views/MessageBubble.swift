@@ -270,11 +270,13 @@ struct MarkdownText: View {
         case .numbered(let number, let text, let indent):
             StepView(number: number, text: text, indent: indent)
         case .code(let language, let text):
-            switch RichCode.kind(language: language) {
+            switch RichCode.kind(language: language, code: text) {
             case .diagram:
                 MermaidBlockView(code: text)
             case .math:
                 MathBlockView(code: text)
+            case .picture:
+                SVGBlockView(code: text)
             case .code:
                 CodeBlockView(language: language, code: text)
                     .equatable()

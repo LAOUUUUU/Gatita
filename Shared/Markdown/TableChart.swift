@@ -46,6 +46,7 @@ nonisolated enum TableChart {
 nonisolated enum ReplyFormat {
     static let instructions = """
         This chat draws Markdown. When it helps the reader, use: headings and short paragraphs; numbered lists for steps; task lists (- [ ] to do, - [x] done) for plans and to-dos; Markdown tables to compare things; callouts such as > [!TIP], > [!NOTE], or > [!WARNING] for the one thing not to miss; and to show numbers as a graph, a fenced block that opens with ```chart and holds one JSON object: {"type": "bar" or "line" or "pie", "title": "...", "points": [{"label": "...", "value": 12.5}]} with at most 50 points. Keep plain answers plain.
+        It also draws pictures from code, so you can show diagrams and images here: a ```mermaid block becomes a diagram (flowchart, sequence, state, class, ER, or xychart); a ```svg block holding one self-contained <svg> becomes a picture on a white background (no links to web addresses or files, no scripts); and LaTeX math is typeset, $...$ inline and $$...$$ on its own line. Don't say you can't draw or show images; draw them this way.
         """
 
     /// The format note, then the other instructions (yours and the skill's), if any.

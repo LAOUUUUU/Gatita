@@ -10,6 +10,7 @@
 		061A7B58D4CA44709E96C192 /* MCP in Frameworks */ = {isa = PBXBuildFile; productRef = 07C6F273084440D49225E7B6 /* MCP */; };
 		BB5A7BFF317547118BB7961E /* LaTeXSwiftUI in Frameworks */ = {isa = PBXBuildFile; productRef = 7B7FBFE616FE47A4B5959F87 /* LaTeXSwiftUI */; };
 		89F58730FDC94D798D714D01 /* BeautifulMermaid in Frameworks */ = {isa = PBXBuildFile; productRef = 8D43A2C59F584CE982080EF2 /* BeautifulMermaid */; };
+		DC138BC5F0BA971BAB5AC40E /* SwiftDraw in Frameworks */ = {isa = PBXBuildFile; productRef = DDC63ED7826360B9745D3A2D /* SwiftDraw */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -90,6 +91,7 @@
 				061A7B58D4CA44709E96C192 /* MCP in Frameworks */,
 				BB5A7BFF317547118BB7961E /* LaTeXSwiftUI in Frameworks */,
 				89F58730FDC94D798D714D01 /* BeautifulMermaid in Frameworks */,
+				DC138BC5F0BA971BAB5AC40E /* SwiftDraw in Frameworks */,
 			);
 		};
 		ADBA5D777DBB46D5BEAE40D8 /* Frameworks */ = {
@@ -143,6 +145,7 @@
 				07C6F273084440D49225E7B6 /* MCP */,
 				7B7FBFE616FE47A4B5959F87 /* LaTeXSwiftUI */,
 				8D43A2C59F584CE982080EF2 /* BeautifulMermaid */,
+				DDC63ED7826360B9745D3A2D /* SwiftDraw */,
 			);
 			productName = Gatita;
 			productReference = 08532C8930785FAE00E3BF67 /* Gatita.app */;
@@ -198,6 +201,7 @@
 				2FC5C1E043134AADB6ED2C59 /* XCRemoteSwiftPackageReference "swift-sdk" */,
 				3DAA948693C2421294645532 /* XCRemoteSwiftPackageReference "LaTeXSwiftUI" */,
 				C3380DDBA1444D3981F2485E /* XCRemoteSwiftPackageReference "beautiful-mermaid-swift" */,
+				A11A98C9A2684E43C86F5C42 /* XCRemoteSwiftPackageReference "SwiftDraw" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 08532C65307857E600E3BF67;
@@ -538,6 +542,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		A11A98C9A2684E43C86F5C42 /* XCRemoteSwiftPackageReference "SwiftDraw" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/swhitty/SwiftDraw";
+			requirement = {
+				kind = upToNextMinorVersion;
+				minimumVersion = 0.29.0;
+			};
+		};
 		2FC5C1E043134AADB6ED2C59 /* XCRemoteSwiftPackageReference "swift-sdk" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/modelcontextprotocol/swift-sdk";
@@ -565,6 +577,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		DDC63ED7826360B9745D3A2D /* SwiftDraw */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A11A98C9A2684E43C86F5C42 /* XCRemoteSwiftPackageReference "SwiftDraw" */;
+			productName = SwiftDraw;
+		};
 		07C6F273084440D49225E7B6 /* MCP */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 2FC5C1E043134AADB6ED2C59 /* XCRemoteSwiftPackageReference "swift-sdk" */;
