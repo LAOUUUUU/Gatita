@@ -21,13 +21,11 @@ struct ProjectBar: View {
             bar(compact: true)
         }
         .task(id: viewModel.projectRoot) {
-            repo = await loadRepo()
+            if let state = await Self.unlessCancelled({ await loadRepo() }) { repo = state }
         }
         .task(id: viewModel.projectRoot) {
             roblox = nil
-            let found = await loadRoblox()
-            // A folder picked meanwhile cancels this task, and its late answer must not replace the newer one.
-            if !Task.isCancelled { roblox = found }
+            if let found = await Self.unlessCancelled({ await loadRoblox() }) { roblox = found }
         }
     }
 
@@ -68,6 +66,14 @@ struct ProjectBar: View {
 
             Spacer(minLength: 0)
         }
+    }
+
+    /// Runs a load and gives its answer back, or nil when the task was cancelled while it ran. Picking another
+    /// folder cancels the bar's tasks, but a load that is already under way still finishes, and its answer is about
+    /// the old folder, so it must not replace the newer one.
+    nonisolated static func unlessCancelled<T>(_ load: () async -> T) async -> T? {
+        let answer = await load()
+        return Task.isCancelled ? nil : answer
     }
 
     /// Whether an MCP server for Roblox Studio is connected. The user picks the server's name, so any connected

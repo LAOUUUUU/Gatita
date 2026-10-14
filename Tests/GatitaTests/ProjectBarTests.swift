@@ -25,6 +25,26 @@ final class ProjectBarTests: XCTestCase {
         XCTAssertFalse(ProjectBar.studioIsConnected([:]))
     }
 
+    func testALateAnswerFromACancelledTaskIsDropped() async {
+        // Picking another folder cancels the bar's task, but its slow answer still arrives. It is about the old
+        // folder, so it must not replace the newer one.
+        let task = Task { () -> Int? in
+            await ProjectBar.unlessCancelled {
+                try? await Task.sleep(for: .milliseconds(300))
+                return 1
+            }
+        }
+        try? await Task.sleep(for: .milliseconds(50))
+        task.cancel()
+        let answer = await task.value
+        XCTAssertNil(answer)
+    }
+
+    func testAnAnswerFromATaskThatIsStillWantedIsKept() async {
+        let answer = await ProjectBar.unlessCancelled { 2 }
+        XCTAssertEqual(answer, 2)
+    }
+
     func testALongNameIsShortenedInTheMiddle() {
         let name = "feature/very-long-branch-name-for-testing"
         let short = ProjectBar.shortened(name, to: 20)
