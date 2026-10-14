@@ -70,7 +70,8 @@ Swift packages (see [decision 009](docs/decisions/009-swift-packages.md)):
 
 | Package | For | License |
 |---|---|---|
-| [LaTeXSwiftUI](https://github.com/colinc86/LaTeXSwiftUI) 2.x, with MathJaxSwift, SwiftDraw, and swift-html-entities | Math in replies | MIT |
+| [LaTeXSwiftUI](https://github.com/colinc86/LaTeXSwiftUI) 2.0.0, as a patched copy in `Packages/LaTeXSwiftUI` ([what changed](Packages/LaTeXSwiftUI/PATCHES.md)), with MathJaxSwift and swift-html-entities | Math in replies | MIT |
+| [SwiftDraw](https://github.com/swhitty/SwiftDraw) 0.29.x | SVG pictures in replies (and LaTeXSwiftUI's drawing) | zlib |
 | [BeautifulMermaid](https://github.com/lukilabs/beautiful-mermaid-swift) 1.x, with elk-swift | Mermaid diagrams, drawn natively | MIT |
 | [MCP swift-sdk](https://github.com/modelcontextprotocol/swift-sdk) 0.12.x, with swift-log, swift-system, and EventSource | MCP servers | Apache 2.0 / MIT |
 

@@ -1,5 +1,5 @@
 {
-  "originHash" : "9422a63edba171d15cb78b32524e8e66872670b1f4f515b4967e053ec4a46ff4",
+  "originHash" : "eb346e13f89b6a3ec51911c0e9d405aee95d9849f27ab28ca48d4eb32df21570",
   "pins" : [
     {
       "identity" : "beautiful-mermaid-swift",
@@ -26,15 +26,6 @@
       "state" : {
         "revision" : "86b5096ac59ab46e66bd1f6377c604bc1dab0bc2",
         "version" : "1.5.1"
-      }
-    },
-    {
-      "identity" : "latexswiftui",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/colinc86/LaTeXSwiftUI",
-      "state" : {
-        "revision" : "cc677f66b9cc1751e09207621d62d1cda0200675",
-        "version" : "2.0.0"
       }
     },
     {

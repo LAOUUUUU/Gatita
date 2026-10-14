@@ -14,6 +14,7 @@ Until now Gatita had no package dependencies: code colors, charts, and the conne
   - It renders with MathJax in JavaScriptCore (through MathJaxSwift), off the main thread.
   - It shows the plain text until the math is ready (`renderingStyle(.original)`).
   - SwiftMath was the other choice: native, but only a label, with no mixed text and math.
+  - **Since 2026-10-14 Gatita builds a patched copy** in `Packages/LaTeXSwiftUI` (a local package in the Xcode project) instead of the GitHub package. 2.0.0 is the newest release and has two bugs with no setting to work around them: MathJaxSwift's default number pattern lost its backslashes, so any `_{…1}` or `^{…3}` failed ("Extra open brace") and `-2\pi` drew as `2\` then `pi`; and on the Mac every equation drew at half size the first time. `Packages/LaTeXSwiftUI/PATCHES.md` lists both fixes and how to update the copy. Vendoring was chosen over rewriting formulas before drawing, which could not fix the size and would have drawn the Mac at 1x.
 - **Diagrams: [BeautifulMermaid](https://github.com/lukilabs/beautiful-mermaid-swift) 1.x (MIT).**
   - It draws Mermaid natively, with no web view: flowchart, state, sequence, class, ER, and XY charts.
   - Bundling `mermaid.js` in a `WKWebView` would cover more diagram types, but at the cost of a web view per diagram.

@@ -3,6 +3,7 @@
 //  GatitaTests
 //
 
+import LaTeXSwiftUI
 import XCTest
 @testable import Gatita
 
@@ -46,6 +47,19 @@ final class MathAndDiagramTests: XCTestCase {
     func testDisplayMathIsWrappedOnce() {
         XCTAssertEqual(RichCode.displayMath("E = mc^2"), "$$E = mc^2$$")
         XCTAssertEqual(RichCode.displayMath("  $$x$$ "), "$$x$$", "already wrapped stays as it is")
+    }
+
+    // MARK: - Drawing math (with LaTeXSwiftUI, patched in Packages/LaTeXSwiftUI)
+
+    func testNumbersBeforeABraceStillParse() throws {
+        // MathJaxSwift's default number pattern had lost its backslashes, so "1}" was read as one number and
+        // x_{n=1} failed with "Extra open brace". A failed formula comes back as a much wider picture of the error.
+        for (digit, letter) in [(#"$$x_{n=1}$$"#, #"$$x_{n=a}$$"#), (#"$$\lim_{x \to 0} x$$"#, #"$$\lim_{x \to a} x$$"#),
+                                (#"$$\sum_{n=1}^{\infty} \frac{1}{n^s}$$"#, #"$$\sum_{n=a}^{\infty} \frac{1}{n^s}$$"#)] {
+            let withDigit = try XCTUnwrap(LaTeX.renderToImages(digit, xHeight: 8).first, digit)
+            let withLetter = try XCTUnwrap(LaTeX.renderToImages(letter, xHeight: 8).first, letter)
+            XCTAssertEqual(withDigit.size.width, withLetter.size.width, accuracy: withLetter.size.width * 0.25, digit)
+        }
     }
 
     // MARK: - Drawing diagrams (with the BeautifulMermaid package)

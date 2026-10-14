@@ -199,7 +199,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				2FC5C1E043134AADB6ED2C59 /* XCRemoteSwiftPackageReference "swift-sdk" */,
-				3DAA948693C2421294645532 /* XCRemoteSwiftPackageReference "LaTeXSwiftUI" */,
+				F31D0FC11BA327ABDA9764B9 /* XCLocalSwiftPackageReference "Packages/LaTeXSwiftUI" */,
 				C3380DDBA1444D3981F2485E /* XCRemoteSwiftPackageReference "beautiful-mermaid-swift" */,
 				A11A98C9A2684E43C86F5C42 /* XCRemoteSwiftPackageReference "SwiftDraw" */,
 			);
@@ -541,6 +541,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		F31D0FC11BA327ABDA9764B9 /* XCLocalSwiftPackageReference "Packages/LaTeXSwiftUI" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/LaTeXSwiftUI;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		A11A98C9A2684E43C86F5C42 /* XCRemoteSwiftPackageReference "SwiftDraw" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -556,14 +563,6 @@
 			requirement = {
 				kind = upToNextMinorVersion;
 				minimumVersion = 0.12.1;
-			};
-		};
-		3DAA948693C2421294645532 /* XCRemoteSwiftPackageReference "LaTeXSwiftUI" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/colinc86/LaTeXSwiftUI";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 2.0.0;
 			};
 		};
 		C3380DDBA1444D3981F2485E /* XCRemoteSwiftPackageReference "beautiful-mermaid-swift" */ = {
@@ -589,7 +588,7 @@
 		};
 		7B7FBFE616FE47A4B5959F87 /* LaTeXSwiftUI */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 3DAA948693C2421294645532 /* XCRemoteSwiftPackageReference "LaTeXSwiftUI" */;
+			package = F31D0FC11BA327ABDA9764B9 /* XCLocalSwiftPackageReference "Packages/LaTeXSwiftUI" */;
 			productName = LaTeXSwiftUI;
 		};
 		8D43A2C59F584CE982080EF2 /* BeautifulMermaid */ = {
