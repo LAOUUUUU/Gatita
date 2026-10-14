@@ -1,6 +1,10 @@
 # Gatita
 
 [![Tests](https://github.com/LAOUUUUU/Gatita/actions/workflows/tests.yml/badge.svg?branch=dev)](https://github.com/LAOUUUUU/Gatita/actions/workflows/tests.yml)
+[![Release](https://img.shields.io/github/v/release/LAOUUUUU/Gatita?include_prereleases&label=release)](https://github.com/LAOUUUUU/Gatita/releases)
+[![Stars](https://img.shields.io/github/stars/LAOUUUUU/Gatita)](https://github.com/LAOUUUUU/Gatita/stargazers)
+[![Downloads](https://img.shields.io/github/downloads/LAOUUUUU/Gatita/total)](https://github.com/LAOUUUUU/Gatita/releases)
+[![Views](https://hits.sh/github.com/LAOUUUUU/Gatita.svg?label=views)](https://hits.sh/github.com/LAOUUUUU/Gatita/)
 
 A SwiftUI chat app for Gatita's API, for Mac, iPhone, iPad, and Apple Vision Pro. The Mac is the full host, with project tools. iPhone, iPad, and Vision Pro are hosts that answer questions. Other platforms will be clients. See [ROADMAP.md](ROADMAP.md) and [docs/architecture.md](docs/architecture.md).
 
