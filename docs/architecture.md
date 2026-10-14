@@ -8,15 +8,18 @@ Gatita is one SwiftUI app with several targets. The Mac is the full host. iPhone
 |---|---|
 | `App/` | The app entry point (`GatitaApp.swift`) and the asset catalog (icons, logo, menu bar icon). |
 | `Shared/` | Code for every platform that builds it: networking, tools, connectors, models, view model, views, shop, settings, chat history, logging, safety rules, and the task registry (`Shared/Tasks`). |
-| `macOS/` | Code that only makes sense on the Mac: the sandboxed command runner and background process, the web check, the GitHub and Calendar connectors, the git process runner, the menu bar, the file tree, the pull-request sheet, the mode switch, the activity panel, and the sleep guard. |
+| `macOS/` | Code that only makes sense on the Mac: the sandboxed command runner and background process, the web check, the GitHub and Calendar connectors, the git process runner, the menu bar, the file tree, the pull-request sheet, the mode switch, the activity panel, the sleep guard, the quick panel and Services, the local MCP server process (`MCPProcess`), the launch work (`MacLaunch`), the chat window's layout and toolbar (`MacChatLayout`), and the Project, Quick panel, and Scheduled settings pages. |
+| `iOS/` | Code for iPhone and iPad: the iPhone's link to the Apple Watch app (`HostSession+Watch`, `#if os(iOS)`) and the chat layout for touch screens (`TouchChatLayout`, `#if !os(macOS)`, which Vision Pro uses too). |
+| `iPadOS/` | For iPad-only code. Empty for now. iPhone and iPad are one build, so a file here also checks `UIDevice.current.userInterfaceIdiom == .pad` at run time. |
+| `visionOS/` | For Vision Pro-only code (`#if os(visionOS)`). Empty for now. |
 | `watchOS/` | Watch-only input and speech code. Not in a built target yet. |
-| `iOS/`, `visionOS/`, `tvOS/` | Reserved for code that only that OS needs. Empty for now. See [002](decisions/002-per-os-folders.md). |
+| `tvOS/` | Reserved. There is no tvOS target. See [002](decisions/002-per-os-folders.md) and [004](decisions/004-tvos-and-watchos-transport.md). |
 | `Tests/GatitaTests/` | The unit tests (XCTest). |
 | `Tests/MockServer/` | A local stand-in for the Gatita API, used by the agent-loop tests. |
 | `Tests/Fixtures/` | Example plugin folders for the plugin tests. |
 | `docs/` | This file and the decision records. |
 
-`Info.plist` and `Gatita.entitlements` are at the top of the repo. The Xcode project uses synchronized folders, so a file added to `App/`, `Shared/`, `macOS/`, `watchOS/`, or `Tests/GatitaTests/` joins its target without a project edit.
+`Info.plist` and `Gatita.entitlements` are at the top of the repo. The Xcode project uses synchronized folders, so a file added to `App/`, `Shared/`, `macOS/`, `iOS/`, `iPadOS/`, `visionOS/`, `watchOS/`, or `Tests/GatitaTests/` joins its target without a project edit. All of them build for iPhone, iPad, Mac, and Vision Pro, so a file in an OS folder wraps itself in `#if os(...)`: Xcode limits a file to some platforms per file in the project, not per folder. The empty folders hold a `.gitkeep`, which the app target skips (`membershipExceptions`), since Xcode would otherwise copy it into the app.
 
 ## Roles and what each host can do
 

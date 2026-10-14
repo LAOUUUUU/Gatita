@@ -18,3 +18,10 @@ Most of Gatita is shared. Some code only builds on one system: the command runne
 
 - A reader can see from the folder whether a file is Mac-only.
 - Moving a file between folders does not change the code: Swift refers to types by name. Only paths in scripts need updating (the harness does).
+
+## Update, 2026-10-14
+
+- `iOS/`, `iPadOS/`, and `visionOS/` are now in the Xcode project as synchronized folders of the Gatita target, like `macOS/`. `iPadOS/` is new: iPhone and iPad are one build, so it is for code only the iPad uses, which also checks the device at run time.
+- Like `macOS/`, every file in them wraps itself in `#if os(...)`, since all folders build for every platform. Xcode can limit a file to some platforms, but only file by file in the project, which would undo the point of synchronized folders.
+- The big single-OS parts of `Shared/` moved out: whole types (`MCPProcess`, the Project and Quick panel settings pages), Mac-only work behind small helpers (`GitCommand`, `MacLaunch`), the Watch link (`HostSession+Watch`), and the chat window's two layouts (`MacChatLayout`, `TouchChatLayout`). Short `#if` tweaks inside views stay in `Shared/`, and so does `TaskRegistry`'s split, which would have meant exposing its private bookkeeping.
+- Empty folders keep a `.gitkeep` so they exist in the repo, and the app target skips it.

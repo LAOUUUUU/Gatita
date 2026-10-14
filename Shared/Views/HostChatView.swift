@@ -292,61 +292,10 @@ struct HostChatView: View {
     @ViewBuilder
     private var layout: some View {
         #if os(macOS)
-        // The Mac uses two plain columns. A NavigationSplitView sidebar floats as a rounded panel, and it keeps a toolbar strip.
-        HStack(spacing: 0) {
-            sidebar
-                .frame(width: 260)
-                .frame(maxHeight: .infinity)
-            Rectangle()
-                .fill(Color.white.opacity(0.06))
-                .frame(width: 1)
-            detail
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            if viewModel.mode == .code && showingActivity {
-                Rectangle()
-                    .fill(Color.white.opacity(0.06))
-                    .frame(width: 1)
-                ActivityPanel(viewModel: viewModel) {
-                    showingActivity = false
-                }
-            }
-        }
-        .background(Theme.background.ignoresSafeArea())
-        .navigationTitle("")
-        .sheet(isPresented: $showingSettings) {
-            HostSettingsView(viewModel: viewModel)
-                .frame(width: 560, height: 680)
-                .presentationBackground(Theme.background)
-        }
-        .sheet(isPresented: $showingShop) {
-            ShopView(viewModel: viewModel, onClose: { showingShop = false })
-                .frame(width: 620, height: 680)
-                .presentationBackground(Theme.background)
-        }
+        MacChatLayout(viewModel: viewModel, showingActivity: $showingActivity, showingSettings: $showingSettings,
+                      showingShop: $showingShop) { sidebar } detail: { detail }
         #else
-        NavigationStack {
-            detail
-                .toolbar {
-                    ToolbarItem(placement: .navigation) {
-                        Button {
-                            showingChats = true
-                        } label: {
-                            Image(systemName: "sidebar.left")
-                        }
-                        .accessibilityLabel("Chats")
-                    }
-                    ToolbarItemGroup {
-                        NotificationBadge(viewModel: viewModel)
-                    }
-                }
-        }
-        .sheet(isPresented: $showingChats) {
-            NavigationStack {
-                sidebar
-            }
-            .gatitaMenuHost()
-        }
-        .background(Theme.background)
+        TouchChatLayout(viewModel: viewModel, showingChats: $showingChats) { sidebar } detail: { detail }
         #endif
     }
 
@@ -666,48 +615,7 @@ struct HostChatView: View {
         }
         #if os(macOS)
         .overlay(alignment: .topTrailing) {
-            HStack(spacing: 10) {
-                if viewModel.mode == .code {
-                    Button {
-                        showingActivity.toggle()
-                    } label: {
-                        Image(systemName: "sidebar.trailing")
-                            .font(.system(size: 14))
-                            .foregroundStyle(showingActivity ? Theme.accent : .secondary)
-                            .frame(width: 30, height: 30)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Activity")
-                }
-                GatitaMenuButton(id: "transcript", title: "Transcript view", items: {
-                    TranscriptView.allCases.map { view in
-                        GatitaMenuItem(title: view.title, subtitle: view.summary,
-                                       isSelected: viewModel.transcriptView == view) { viewModel.transcriptView = view }
-                    }
-                }) {
-                    Image(systemName: "text.alignleft")
-                        .font(.system(size: 14))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 30, height: 30)
-                        .contentShape(Rectangle())
-                }
-                .help("Transcript view")
-                NotificationBadge(viewModel: viewModel)
-                if viewModel.mode == .code {
-                    Button {
-                        showingPullRequest = true
-                    } label: {
-                        Image(systemName: "arrow.triangle.pull")
-                            .font(.system(size: 14))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 30, height: 30)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Create a pull request")
-                }
-            }
-            .padding(.top, 12)
-            .padding(.trailing, 16)
+            MacChatToolbar(viewModel: viewModel, showingActivity: $showingActivity, showingPullRequest: $showingPullRequest)
         }
         #endif
         #if os(macOS)
