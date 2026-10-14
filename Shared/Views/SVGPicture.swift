@@ -29,9 +29,9 @@ nonisolated enum SVGPicture {
     /// `xmlns` addresses only name the SVG's vocabulary and are never loaded.
     private static let namespace = try! NSRegularExpression(pattern: #"\sxmlns(:[\w-]+)?\s*=\s*("[^"]*"|'[^']*')"#)
     private static let outside = try! NSRegularExpression(
-        pattern: #"://|(href|src)\s*=\s*["']\s*//|url\(\s*["']?\s*//|@import"#, options: .caseInsensitive)
+        pattern: #"://|(href|src)\s*=\s*["']\s*//|url\(\s*["']?\s*//|@import|<!ENTITY"#, options: .caseInsensitive)
 
-    /// Whether the SVG names nothing outside itself, such as https://, file://, //host, or @import.
+    /// Whether the SVG names nothing outside itself, such as https://, file://, //host, @import, or an XML entity.
     static func isSelfContained(_ code: String) -> Bool {
         let names = namespace.stringByReplacingMatches(in: code, range: NSRange(code.startIndex..., in: code), withTemplate: " ")
         return outside.firstMatch(in: names, range: NSRange(names.startIndex..., in: names)) == nil

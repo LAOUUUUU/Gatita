@@ -37,6 +37,7 @@ final class SVGPictureTests: XCTestCase {
             #"<svg xmlns="http://www.w3.org/2000/svg"><image href="file:///etc/hosts"/></svg>"#,
             #"<svg xmlns="http://www.w3.org/2000/svg"><rect style="fill: url(https://example.com/p.svg#g)"/></svg>"#,
             #"<svg xmlns="http://www.w3.org/2000/svg"><style>@import url(x.css);</style></svg>"#,
+            #"<!DOCTYPE svg [<!ENTITY hosts SYSTEM "/etc/hosts">]><svg xmlns="http://www.w3.org/2000/svg"><text>&hosts;</text></svg>"#,
         ] {
             XCTAssertFalse(SVGPicture.isSelfContained(unsafe), unsafe)
             let picture = await SVGPicture.render(unsafe)
