@@ -6,7 +6,7 @@
 import Foundation
 
 /// A preset set of instructions the user can add to a chat, such as "review this code".
-nonisolated struct Skill: Identifiable, Hashable, Sendable {
+nonisolated struct Skill: Identifiable, Hashable, Codable, Sendable {
     let id: String
     let name: String
     let instructions: String

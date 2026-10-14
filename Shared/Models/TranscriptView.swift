@@ -22,6 +22,15 @@ nonisolated enum TranscriptView: String, Codable, CaseIterable, Identifiable, Se
         }
     }
 
+    /// What the view shows, for the menu that picks it.
+    var summary: String {
+        switch self {
+        case .normal: "Only the text Gatita writes"
+        case .thinking: "Adds its thinking and tool calls, folded"
+        case .verbose: "Everything, opened up"
+        }
+    }
+
     var showsThinking: Bool { self != .normal }
     var showsToolCalls: Bool { self != .normal }
     var expandsThinking: Bool { self == .verbose }

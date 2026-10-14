@@ -12,6 +12,37 @@ enum Theme {
     static let surface = Color(white: 0.14)
 }
 
+/// Gatita's buttons: an orange pill for the main action, a dark pill for the others, and a red one for deleting.
+struct GatitaButtonStyle: ButtonStyle {
+    enum Role { case primary, secondary, destructive }
+    let role: Role
+    @Environment(\.isEnabled) private var isEnabled
+
+    init(_ role: Role = .primary) {
+        self.role = role
+    }
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.callout.weight(role == .secondary ? .medium : .semibold))
+            .foregroundStyle(role == .secondary ? Color.white.opacity(0.9) : Color.white)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Capsule().fill(fill.opacity(configuration.isPressed ? 0.75 : 1)))
+            .overlay(Capsule().stroke(Color.white.opacity(role == .secondary ? 0.1 : 0)))
+            .opacity(isEnabled ? 1 : 0.45)
+            .contentShape(Capsule())
+    }
+
+    private var fill: Color {
+        switch role {
+        case .primary: Theme.accent
+        case .secondary: Theme.surface
+        case .destructive: Color(red: 0.85, green: 0.25, blue: 0.22)
+        }
+    }
+}
+
 /// A pill with a thin outline, for the starter prompts. Phones and tablets get smaller pills,
 /// so the starter prompts fit on one line.
 struct PillButtonStyle: ButtonStyle {

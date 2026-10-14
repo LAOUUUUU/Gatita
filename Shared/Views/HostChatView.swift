@@ -4,6 +4,125 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
+
+/// The ⌘F bar over the chat: the words to find, which match is shown, next and previous, and close.
+private struct FindBar: View {
+    @Bindable var viewModel: ChatViewModel
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        let count = viewModel.findMatches.count
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField("Find in this chat", text: $viewModel.findQuery)
+                .textFieldStyle(.plain)
+                .frame(width: 180)
+                .focused($focused)
+                .onSubmit { viewModel.findStep(1) }
+            Text(count > 0 ? "\(min(viewModel.findIndex, count - 1) + 1) of \(count)"
+                 : viewModel.findQuery.isEmpty ? "" : "No matches")
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(minWidth: 62, alignment: .trailing)
+            Button { viewModel.findStep(-1) } label: { Image(systemName: "chevron.up") }
+                .disabled(count == 0)
+                .help("Previous match (⇧⌘G)")
+            Button { viewModel.findStep(1) } label: { Image(systemName: "chevron.down") }
+                .disabled(count == 0)
+                .help("Next match (⌘G)")
+            Button { viewModel.stopFinding() } label: { Image(systemName: "xmark") }
+                .keyboardShortcut(.cancelAction)
+                .help("Close (Escape)")
+        }
+        .buttonStyle(.plain)
+        .font(.callout)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .background(Capsule().fill(Theme.surface))
+        .overlay(Capsule().stroke(Color.white.opacity(0.1)))
+        .shadow(color: .black.opacity(0.4), radius: 10, y: 4)
+        .claimsEscape(true)
+        .onAppear { focused = true }
+        .onChange(of: viewModel.findFocusRequests) { _, _ in focused = true }
+    }
+}
+
+/// A command Gatita wants to run, waiting for your answer: Deny (Escape), Always allow, or Allow once (Return).
+private struct CommandApprovalCard: View {
+    let request: CommandApproval.Request
+    let project: String
+    let answer: (CommandApproval.Decision) -> Void
+
+    /// An MCP tool rather than a command, and its server and tool names.
+    private var mcpTool: (server: String, tool: String)? {
+        MCPConfig.split(request.rule)
+    }
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.45)
+                .ignoresSafeArea()
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 10) {
+                    Image(systemName: mcpTool == nil ? "terminal" : "point.3.connected.trianglepath.dotted")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Theme.accent)
+                        .frame(width: 32, height: 32)
+                        .background(Circle().fill(Theme.accent.opacity(0.15)))
+                    Text(mcpTool == nil ? "Run this command?" : "Use this MCP tool?")
+                        .font(.headline)
+                }
+                Text(request.command)
+                    .font(.system(.callout, design: .monospaced))
+                    .textSelection(.enabled)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                Text(mcpTool.map { "From the \($0.server) MCP server. It can do whatever that server allows, which may include changes outside Gatita." }
+                     ?? "In \(project). It runs sandboxed, with no network, and writes only inside the project.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8) {
+                    Button("Deny") { answer(.deny) }
+                        .buttonStyle(GatitaButtonStyle(.secondary))
+                        .keyboardShortcut(.cancelAction)
+                    Spacer()
+                    Button("Always allow \(mcpTool?.tool ?? request.rule)") { answer(.allowAlways) }
+                        .buttonStyle(GatitaButtonStyle(.secondary))
+                        .help("Don't ask again for \(mcpTool?.tool ?? request.rule), with any arguments, in this project")
+                    // No Return shortcut: someone typing in the prompt box as the card appears must not approve it.
+                    Button("Allow once") { answer(.allowOnce) }
+                        .buttonStyle(GatitaButtonStyle(.primary))
+                }
+            }
+            .padding(20)
+            .frame(maxWidth: 460, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color(white: 0.1)))
+            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Color.white.opacity(0.1)))
+            .shadow(color: .black.opacity(0.5), radius: 30, y: 12)
+            .padding(24)
+        }
+        .claimsEscape(true)
+    }
+}
+
+/// Escape stops a reply while one is on its way, unless a menu or a dialog is open (see `EscapeClaims`).
+private struct StopReplyShortcut: View {
+    let viewModel: ChatViewModel
+    @Environment(EscapeClaims.self) private var escape: EscapeClaims?
+
+    var body: some View {
+        if viewModel.isSending, escape?.isClaimed != true {
+            Button("Stop") { viewModel.stop() }
+                .keyboardShortcut(.cancelAction)
+                .opacity(0)
+                .allowsHitTesting(false)
+        }
+    }
+}
 
 /// The chat screen for a host device. The sidebar lists saved chats, or project files on the Mac.
 /// The conversation and the prompt box sit on the right.
@@ -23,6 +142,24 @@ struct HostChatView: View {
     @State private var atBottom = false
     /// Names of the devices connected to this Mac. Shown at the top of the chat screen.
     var connectedDevices: [String] = []
+    /// The Gatita dialog on screen, and what its confirm button does.
+    @State private var dialog: GatitaDialogSpec?
+    @State private var dialogAction: DialogAction?
+    /// What is typed in a dialog: a chat's new title, or a new folder's name.
+    @State private var dialogText = ""
+    /// Folders folded shut in the sidebar.
+    @State private var collapsedFolders: Set<String> = []
+    /// The chat being exported, as Markdown.
+    @State private var exporting: MarkdownFile?
+    /// The dialogs and menus open here, which take Escape from the Stop shortcut.
+    @State private var escape = EscapeClaims()
+
+    private enum DialogAction {
+        case rename(UUID)
+        case newFolder(UUID)
+        case forceUndo(UUID)
+        case deleteAll
+    }
 
     private enum SidebarChoice: String, CaseIterable, Identifiable {
         case chats = "Chats"
@@ -63,6 +200,97 @@ struct HostChatView: View {
     }
 
     var body: some View {
+        layout
+            .gatitaMenuHost()
+            .overlay {
+                if let request = viewModel.pendingCommand {
+                    CommandApprovalCard(request: request,
+                                        project: URL(fileURLWithPath: viewModel.projectRoot).lastPathComponent,
+                                        answer: viewModel.answerCommand)
+                        .transition(.opacity)
+                }
+            }
+            .animation(.easeOut(duration: 0.15), value: viewModel.pendingCommand)
+            .onChange(of: viewModel.undoConflict) { _, conflict in
+                guard let conflict else { return }
+                askForceUndo(conflict)
+                viewModel.undoConflict = nil
+            }
+            .gatitaDialog($dialog, onConfirm: confirmDialog) {
+                if let placeholder = dialogFieldPlaceholder {
+                    TextField(placeholder, text: $dialogText)
+                        .textFieldStyle(.plain)
+                        .padding(10)
+                        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+            }
+            .fileExporter(isPresented: Binding(get: { exporting != nil }, set: { if !$0 { exporting = nil } }),
+                          document: exporting, contentType: MarkdownFile.type,
+                          defaultFilename: exporting?.fileName) { result in
+                if case .failure(let error) = result {
+                    viewModel.errorMessage = "Could not export the chat: \(error.localizedDescription)"
+                }
+                exporting = nil
+            }
+            .environment(escape)
+    }
+
+    private func confirmDialog() {
+        switch dialogAction {
+        case .rename(let id): viewModel.renameChat(id, to: dialogText)
+        case .newFolder(let id): viewModel.moveChat(id, toFolder: dialogText)
+        case .forceUndo(let id): viewModel.undoChanges(id, force: true)
+        case .deleteAll: viewModel.deleteAllChats(in: viewModel.mode)
+        case nil: break
+        }
+        dialogAction = nil
+    }
+
+    /// The text field a dialog shows, if it has one.
+    private var dialogFieldPlaceholder: String? {
+        switch dialogAction {
+        case .rename: "Title"
+        case .newFolder: "Folder name, such as School"
+        default: nil
+        }
+    }
+
+    private func askForceUndo(_ conflict: ChatViewModel.UndoConflict) {
+        dialogAction = .forceUndo(conflict.replyID)
+        let names = conflict.files.joined(separator: ", ")
+        dialog = GatitaDialogSpec(icon: "arrow.uturn.backward", title: "Undo anyway?",
+                                  message: "\(names) changed after this reply. Undoing puts every file back as it was before the reply, so those later changes are lost.",
+                                  confirm: "Undo anyway", role: .destructive)
+    }
+
+    private func askNewFolder(for chat: Conversation) {
+        dialogText = ""
+        dialogAction = .newFolder(chat.id)
+        dialog = GatitaDialogSpec(icon: "folder.badge.plus", title: "New folder", message: "\(chat.title) goes in it.",
+                                  confirm: "Create", closesOnOutsideTap: false)
+    }
+
+    private func askRename(_ chat: Conversation) {
+        dialogText = chat.title
+        dialogAction = .rename(chat.id)
+        dialog = GatitaDialogSpec(icon: "pencil", title: "Rename chat", confirm: "Rename", closesOnOutsideTap: false)
+    }
+
+    private func askDeleteAll() {
+        let count = viewModel.conversations(in: viewModel.mode).count
+        dialogAction = .deleteAll
+        dialog = GatitaDialogSpec(icon: "trash", title: "Delete all \(count) chats in \(viewModel.mode.displayName)?",
+                                  message: "They are removed from this device for good. Chats in other modes stay.",
+                                  confirm: "Delete all", role: .destructive)
+    }
+
+    private func export(_ chat: Conversation) {
+        guard let file = viewModel.exportChat(chat.id) else { return }
+        exporting = MarkdownFile(text: file.text, fileName: file.fileName)
+    }
+
+    @ViewBuilder
+    private var layout: some View {
         #if os(macOS)
         // The Mac uses two plain columns. A NavigationSplitView sidebar floats as a rounded panel, and it keeps a toolbar strip.
         HStack(spacing: 0) {
@@ -91,17 +319,9 @@ struct HostChatView: View {
                 .presentationBackground(Theme.background)
         }
         .sheet(isPresented: $showingShop) {
-            NavigationStack {
-                ShopView(viewModel: viewModel)
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") { showingShop = false }
-                                .keyboardShortcut(.cancelAction)
-                        }
-                    }
-            }
-            .frame(width: 620, height: 680)
-            .presentationBackground(Theme.background)
+            ShopView(viewModel: viewModel, onClose: { showingShop = false })
+                .frame(width: 620, height: 680)
+                .presentationBackground(Theme.background)
         }
         #else
         NavigationStack {
@@ -124,6 +344,7 @@ struct HostChatView: View {
             NavigationStack {
                 sidebar
             }
+            .gatitaMenuHost()
         }
         .background(Theme.background)
         #endif
@@ -175,9 +396,24 @@ struct HostChatView: View {
             TextField("Search chats", text: $search)
                 .textFieldStyle(.roundedBorder)
 
-            Text(showsFiles ? "Files" : "Chats")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            HStack {
+                Text(showsFiles ? "Files" : "Chats")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if !showsFiles, !viewModel.conversations(in: viewModel.mode).isEmpty {
+                    GatitaMenuButton(id: "chats-more", items: {
+                        [GatitaMenuItem(title: "Delete all chats…", icon: "trash", isDestructive: true, action: askDeleteAll)]
+                    }) {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 22, height: 18)
+                            .contentShape(Rectangle())
+                    }
+                    .help("More")
+                }
+            }
             if showsFiles {
                 filesList
             } else {
@@ -244,23 +480,25 @@ struct HostChatView: View {
 
     private var chatList: some View {
         let chats = viewModel.conversations(in: viewModel.mode)
-            .sorted { $0.updatedAt > $1.updatedAt }
-            .filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }
+        let sections = ChatSidebar.sections(chats, search: search)
+        let folders = ChatSidebar.folders(chats)
 
         return List(selection: selectionBinding) {
-            ForEach(chats) { chat in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(chat.title)
-                        .lineLimit(1)
-                    Text(chat.preview)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                .tag(chat.id)
-                .contextMenu {
-                    Button("Delete chat", role: .destructive) {
-                        viewModel.deleteChat(chat.id)
+            ForEach(sections) { section in
+                if section.kind == .folder {
+                    Section(isExpanded: folderBinding(section.title)) {
+                        ForEach(section.chats) { chatRow($0, folders: folders) }
+                    } header: {
+                        Label(section.title, systemImage: "folder")
+                    }
+                } else {
+                    Section {
+                        ForEach(section.chats) { chatRow($0, folders: folders) }
+                    } header: {
+                        // Without pins or folders, the list looks as it always did.
+                        if sections.count > 1 || section.kind == .pinned {
+                            Label(section.title, systemImage: section.kind == .pinned ? "pin" : "bubble.left.and.bubble.right")
+                        }
                     }
                 }
             }
@@ -268,10 +506,52 @@ struct HostChatView: View {
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
         .overlay {
-            if chats.isEmpty {
+            if sections.isEmpty {
                 Text("No saved chats yet.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func folderBinding(_ name: String) -> Binding<Bool> {
+        Binding(get: { !collapsedFolders.contains(name) },
+                set: { open in
+                    if open { collapsedFolders.remove(name) } else { collapsedFolders.insert(name) }
+                })
+    }
+
+    private func chatRow(_ chat: Conversation, folders: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(chat.title)
+                .lineLimit(1)
+            // While searching, the words around the match instead of the latest reply.
+            Text(search.isEmpty ? chat.preview : ChatSearch.snippet(in: chat.messages, query: search) ?? chat.preview)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .tag(chat.id)
+        .contextMenu {
+            Button(chat.pinned == true ? "Unpin" : "Pin", systemImage: chat.pinned == true ? "pin.slash" : "pin") {
+                viewModel.togglePinChat(chat.id)
+            }
+            Menu("Move to Folder", systemImage: "folder") {
+                ForEach(folders.filter { $0 != chat.folder }, id: \.self) { folder in
+                    Button(folder) { viewModel.moveChat(chat.id, toFolder: folder) }
+                }
+                if !folders.isEmpty { Divider() }
+                Button("New Folder…", systemImage: "folder.badge.plus") { askNewFolder(for: chat) }
+                if chat.folder != nil {
+                    Button("Take Out of Folder") { viewModel.moveChat(chat.id, toFolder: nil) }
+                }
+            }
+            Divider()
+            Button("Rename…", systemImage: "pencil") { askRename(chat) }
+            Button("Export as Markdown…", systemImage: "square.and.arrow.up") { export(chat) }
+            Divider()
+            Button("Delete chat", systemImage: "trash", role: .destructive) {
+                viewModel.deleteChat(chat.id)
             }
         }
     }
@@ -357,6 +637,13 @@ struct HostChatView: View {
                     .padding(.horizontal)
             }
 
+            if let problem = viewModel.voice.problem {
+                Text(problem)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .padding(.horizontal)
+            }
+
             if let retryAt = viewModel.retryAt {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     Label(RateLimit.note(until: retryAt, now: context.date), systemImage: "hourglass")
@@ -370,6 +657,7 @@ struct HostChatView: View {
             HostInputBar(viewModel: viewModel)
                 .frame(maxWidth: 800)
                 .frame(maxWidth: .infinity)
+                .background { StopReplyShortcut(viewModel: viewModel) }
 
             Text("Gatita may create biased or incorrect information. Verify critical facts.")
                 .font(.caption2)
@@ -391,19 +679,18 @@ struct HostChatView: View {
                     .buttonStyle(.plain)
                     .help("Activity")
                 }
-                Menu {
-                    Picker("Transcript view", selection: $viewModel.transcriptView) {
-                        ForEach(TranscriptView.allCases) { Text($0.title).tag($0) }
+                GatitaMenuButton(id: "transcript", title: "Transcript view", items: {
+                    TranscriptView.allCases.map { view in
+                        GatitaMenuItem(title: view.title, subtitle: view.summary,
+                                       isSelected: viewModel.transcriptView == view) { viewModel.transcriptView = view }
                     }
-                } label: {
+                }) {
                     Image(systemName: "text.alignleft")
                         .font(.system(size: 14))
                         .foregroundStyle(.secondary)
                         .frame(width: 30, height: 30)
+                        .contentShape(Rectangle())
                 }
-                .menuStyle(.borderlessButton)
-                .tint(.gray)
-                .fixedSize()
                 .help("Transcript view")
                 NotificationBadge(viewModel: viewModel)
                 if viewModel.mode == .code {
@@ -478,6 +765,15 @@ struct HostChatView: View {
         .buttonStyle(PillButtonStyle())
     }
 
+    /// Brings the current ⌘F match into the middle of the view.
+    private func scrollToMatch(_ proxy: ScrollViewProxy) {
+        let matches = viewModel.findMatches
+        guard !matches.isEmpty else { return }
+        withAnimation(.easeInOut(duration: 0.25)) {
+            proxy.scrollTo(matches[min(viewModel.findIndex, matches.count - 1)].messageID, anchor: .center)
+        }
+    }
+
     private var promptCount: Int {
         viewModel.messages.filter { $0.role == "user" }.count
     }
@@ -491,7 +787,10 @@ struct HostChatView: View {
                     VStack(alignment: .leading, spacing: 22) {
                         ForEach(viewModel.messages) { message in
                             MessageBubble(message: message, transcriptView: viewModel.transcriptView,
-                                          onAction: { viewModel.performAction($0, on: message.id) })
+                                          onAction: { viewModel.performAction($0, on: message.id) },
+                                          isSpeaking: viewModel.speaker.speakingID == message.id,
+                                          isBusy: viewModel.isSending,
+                                          canUndo: viewModel.undoableReplies.contains(message.id))
                                 .id(message.id)
                                 .background(promptPosition(for: message))
                         }
@@ -499,6 +798,7 @@ struct HostChatView: View {
                     .padding(.horizontal, 20)
                     .padding(.vertical, 28)
                     .coordinateSpace(name: "chatContent")
+                    .environment(\.findHighlight, viewModel.isFinding ? viewModel.findQuery : "")
                 }
                 .scrollIndicators(.never)
                 .frame(maxWidth: 760)
@@ -514,6 +814,40 @@ struct HostChatView: View {
                     atBottom = bottom
                 }
                 .onPreferenceChange(PromptPositionKey.self) { promptPositions = $0 }
+                .overlay(alignment: .bottom) {
+                    if !atBottom, let last = viewModel.messages.last {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.4)) {
+                                proxy.scrollTo(last.id, anchor: .bottom)
+                            }
+                        } label: {
+                            Image(systemName: "arrow.down")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 34, height: 34)
+                                .background(Circle().fill(Theme.surface))
+                                .overlay(Circle().stroke(Color.white.opacity(0.12)))
+                                .shadow(color: .black.opacity(0.4), radius: 8, y: 3)
+                                .contentShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.bottom, 12)
+                        .transition(.scale(scale: 0.8).combined(with: .opacity))
+                        .help("Jump to the latest message")
+                    }
+                }
+                .animation(.easeOut(duration: 0.2), value: atBottom)
+                .overlay(alignment: .top) {
+                    if viewModel.isFinding {
+                        // Below the row of buttons at the top of the chat, so it never covers them.
+                        FindBar(viewModel: viewModel)
+                            .padding(.top, 50)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                }
+                .animation(.easeOut(duration: 0.15), value: viewModel.isFinding)
+                .onChange(of: viewModel.findIndex) { _, _ in scrollToMatch(proxy) }
+                .onChange(of: viewModel.findQuery) { _, _ in scrollToMatch(proxy) }
                 .onChange(of: promptCount) { _, _ in
                     // A new prompt scrolls to the top of the view, and the answer grows below it.
                     if let last = viewModel.messages.last(where: { $0.role == "user" }) {

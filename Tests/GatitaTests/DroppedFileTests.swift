@@ -3,6 +3,7 @@
 //  GatitaTests
 //
 
+import CoreText
 import XCTest
 @testable import Gatita
 
@@ -98,5 +99,60 @@ final class DroppedFileTests: XCTestCase {
         XCTAssertTrue(context.contains("File a.swift (attached):"))
         XCTAssertTrue(context.contains("let b = 2"))
         XCTAssertLessThanOrEqual(DroppedFile.context(for: files, limit: 20).count, 20)
+    }
+
+    // MARK: - PDFs
+
+    /// A PDF with one line of text on each page (or blank pages for no text).
+    private func makePDF(_ pages: [String?]) throws -> URL {
+        let url = temporaryFolder(self, name: "pdf").appendingPathComponent("Notes.pdf")
+        var box = CGRect(x: 0, y: 0, width: 612, height: 792)
+        let context = try XCTUnwrap(CGContext(url as CFURL, mediaBox: &box, nil))
+        for text in pages {
+            context.beginPDFPage(nil)
+            if let text {
+                let font = CTFontCreateWithName("Helvetica" as CFString, 14, nil)
+                let line = CTLineCreateWithAttributedString(
+                    NSAttributedString(string: text, attributes: [NSAttributedString.Key(kCTFontAttributeName as String): font]))
+                context.textPosition = CGPoint(x: 72, y: 700)
+                CTLineDraw(line, context)
+            }
+            context.endPDFPage()
+        }
+        context.closePDF()
+        return url
+    }
+
+    func testAPDFIsReadAsItsText() throws {
+        let file = try DroppedFile.read(makePDF(["Hello from page one", "Second page here"]))
+        XCTAssertTrue(file.text.contains("Hello from page one") && file.text.contains("Second page here"), file.text)
+        XCTAssertNil(file.image)
+        XCTAssertEqual(file.kind, "PDF · 2 pages")
+    }
+
+    func testAPDFWithNoTextSaysSo() throws {
+        let url = try makePDF([nil])
+        XCTAssertThrowsError(try DroppedFile.read(url)) { error in
+            XCTAssertEqual(error as? DroppedFile.ReadError, .noTextInPDF("Notes.pdf"))
+            XCTAssertTrue(error.localizedDescription.contains("scanned"), error.localizedDescription)
+        }
+    }
+
+    func testAPDFWithAPasswordSaysSo() throws {
+        let url = temporaryFolder(self, name: "pdf").appendingPathComponent("Locked.pdf")
+        var box = CGRect(x: 0, y: 0, width: 612, height: 792)
+        let info = [kCGPDFContextUserPassword: "pw", kCGPDFContextOwnerPassword: "pw"] as CFDictionary
+        let context = try XCTUnwrap(CGContext(url as CFURL, mediaBox: &box, info))
+        context.beginPDFPage(nil)
+        context.endPDFPage()
+        context.closePDF()
+        XCTAssertThrowsError(try DroppedFile.read(url)) { error in
+            XCTAssertEqual(error as? DroppedFile.ReadError, .lockedPDF("Locked.pdf"))
+            XCTAssertTrue(error.localizedDescription.contains("password"), error.localizedDescription)
+        }
+    }
+
+    func testOnePageIsSaidAsOnePage() throws {
+        XCTAssertEqual(try DroppedFile.read(makePDF(["Only page"])).kind, "PDF · 1 page")
     }
 }

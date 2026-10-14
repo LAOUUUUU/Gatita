@@ -9,8 +9,10 @@ import Foundation
 /// one GET with Gatita's User-Agent, JSON reading, and text cleanup. No keys and no sign-in are used.
 nonisolated enum PublicAPI {
     /// Wikimedia, crates.io, and GitHub ask every client to name itself and give a way to reach its maker.
+    /// Read from the bundle here rather than from AppVersion, since connectors run off the main actor.
     static var userAgent: String {
-        "Gatita/\(AppVersion.number) (https://github.com/LAOUUUUU/Gatita)"
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
+        return "Gatita/\(version) (https://github.com/LAOUUUUU/Gatita)"
     }
 
     static let maxBytes = 2_000_000

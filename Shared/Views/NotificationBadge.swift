@@ -5,7 +5,8 @@
 
 import SwiftUI
 
-/// Top-right indicator: a green check when a reply has finished, or an orange question when Gatita is waiting for you.
+/// Top-right indicator: an orange question while Gatita is waiting for your answer. A finished reply is a system
+/// notification instead (sent while Gatita is not in front), not a badge.
 struct NotificationBadge: View {
     @Bindable var viewModel: ChatViewModel
     @State private var showingQuestion = false
@@ -38,14 +39,6 @@ struct NotificationBadge: View {
                 .background(Theme.surface)
             }
             .presentationBackground(Theme.surface)
-        } else if viewModel.finishedReplies > 0 {
-            Button {
-                viewModel.acknowledgeFinished()
-            } label: {
-                Label("Finished (\(viewModel.finishedReplies))", systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-            }
-            .help("Gatita finished a reply. Click to clear.")
         }
     }
 }

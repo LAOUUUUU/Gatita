@@ -23,8 +23,9 @@ final class Connectivity {
             return
         }
         monitor.pathUpdateHandler = { @Sendable [weak self] path in
+            guard let self else { return }
             let online = Connectivity.isOnline(path.status)
-            Task { @MainActor in self?.isOnline = online }
+            Task { @MainActor in self.isOnline = online }
         }
         monitor.start(queue: DispatchQueue(label: "Gatita.connectivity"))
     }

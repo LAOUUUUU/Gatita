@@ -19,6 +19,7 @@ final class AgentLoopTests: XCTestCase {
 
     override class func tearDown() {
         mock?.terminate()
+        mock?.waitUntilExit()
         mock = nil
         super.tearDown()
     }
@@ -205,5 +206,11 @@ final class AgentLoopTests: XCTestCase {
         } catch {
             XCTFail("wrong error: \(error)")
         }
+    }
+
+    func testABatchRunsEachCallAndSendsBackAllTheResultsInOneStep() async throws {
+        let result = try await runScenario("BATCH-TEST")
+        XCTAssertEqual(result.text, "mock: batch ok")
+        XCTAssertEqual(result.events.filter { $0.hasPrefix("tool:") }, ["tool:list_files", "tool:read_file"])
     }
 }

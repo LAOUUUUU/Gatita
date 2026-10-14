@@ -10,8 +10,17 @@ import AppKit
 import UIKit
 #endif
 
-/// Puts text on the system clipboard.
+/// Puts text on the system clipboard, and reads it back.
 enum Clipboard {
+    /// The text on the clipboard, or nil when it holds none.
+    static func text() -> String? {
+        #if os(macOS)
+        NSPasteboard.general.string(forType: .string)
+        #else
+        UIPasteboard.general.string
+        #endif
+    }
+
     static func copy(_ text: String) {
         #if os(macOS)
         NSPasteboard.general.clearContents()

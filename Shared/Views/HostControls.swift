@@ -182,6 +182,19 @@ struct HostInputBar: View {
                     .onSubmit(submit)
                 #endif
 
+                Button {
+                    viewModel.voice.toggle(draft: viewModel.draft) { viewModel.draft = $0 }
+                } label: {
+                    Image(systemName: viewModel.voice.isListening ? "waveform" : "mic")
+                        .font(.system(size: 14))
+                        .foregroundStyle(viewModel.voice.isListening ? Theme.accent : .secondary)
+                        .symbolEffect(.variableColor.iterative, isActive: viewModel.voice.isListening)
+                        .frame(width: 30, height: 30)
+                        .background(Circle().fill(viewModel.voice.isListening ? Theme.accent.opacity(0.15) : .clear))
+                }
+                .buttonStyle(.plain)
+                .help(viewModel.voice.isListening ? "Stop listening" : "Speak your message")
+
                 chipButton(.model) {
                     HStack(spacing: 4) {
                         Text(ChatViewModel.displayName(for: viewModel.model))

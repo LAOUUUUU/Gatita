@@ -76,4 +76,18 @@ final class ToolArgumentsTests: XCTestCase {
     func testAnArgumentAtTheTopWinsOverTheSameOneNested() {
         XCTAssertEqual(ToolArguments.parse(#"{"tool": "read_file", "path": "top", "arguments": {"path": "nested"}}"#)?["path"], "top")
     }
+
+    func testABackslashThatIsNotAJSONEscapeIsKept() {
+        // Swift interpolation, a regex, and a Windows path: \( \d and \U are not JSON escapes, so the model's
+        // block is not valid JSON as written. The backslash is kept as a backslash.
+        let block = #"{"tool": "edit_file", "path": "a.swift", "old_text": "print(\"\(name) \d C:\Users\")", "new_text": "x\ny"}"#
+        let args = ToolArguments.parse(block)
+        XCTAssertEqual(args?["tool"], "edit_file")
+        XCTAssertEqual(args?["old_text"], #"print("\(name) \d C:\Users")"#)
+        XCTAssertEqual(args?["new_text"], "x\ny", "a real escape still means what it says")
+    }
+
+    func testABrokenUnicodeEscapeIsKeptAsText() {
+        XCTAssertEqual(ToolArguments.parse(#"{"tool": "x", "text": "\uZZ"}"#)?["text"], #"\uZZ"#)
+    }
 }

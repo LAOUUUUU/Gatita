@@ -77,20 +77,14 @@ struct ProjectBar: View {
     }
 
     private func branchMenu(compact: Bool) -> some View {
-        Menu {
-            ForEach(repo.worktrees) { tree in
-                Button {
-                    viewModel.projectRoot = tree.path
-                } label: {
-                    Label("\(tree.name) · \(tree.branch ?? "detached HEAD")",
-                          systemImage: tree.id == repo.current?.id ? "checkmark" : "arrow.triangle.branch")
-                }
+        GatitaMenuButton(id: "worktrees", title: "Worktrees", alignTrailing: false, width: 300, items: {
+            repo.worktrees.map { tree in
+                GatitaMenuItem(title: tree.branch ?? "detached HEAD", subtitle: tree.name, icon: "arrow.triangle.branch",
+                               isSelected: tree.id == repo.current?.id) { viewModel.projectRoot = tree.path }
             }
-        } label: {
+        }) {
             pill(Self.shortened(repo.current?.branch ?? "detached HEAD", to: compact ? 10 : 20), icon: "arrow.triangle.branch")
         }
-        .menuStyle(.borderlessButton)
-        .tint(.gray)
         .fixedSize()
         .help("Switch worktree")
     }

@@ -9,6 +9,7 @@ COLON-END, DROPPED, ALWAYS-EMPTY, RATE-LIMIT-ONCE (a 429, then an answer), and R
 - Turn 2 (after a <gatita-tool-result> block): text, split across chunks, if the result shows App/GatitaApp.swift.
 """
 import json
+import re
 import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -107,6 +108,32 @@ class Handler(BaseHTTPRequestHandler):
                 {"choices": [{"index": 0, "delta": {"content": "Let me look. <gatita-tool>{\"tool\": \"list_fi"}}]},
                 stop,
             ])
+        if any("BATCH-TEST" in text for text in user_texts):
+            if results:
+                text = results[-1]["content"]
+                ok = "===== result 2: read_file =====" in text and "let app = 1" in text and "App/GatitaApp.swift" in text
+                return self._sse([{"choices": [{"index": 0, "delta": {"content": "mock: batch ok" if ok else "mock: batch result missing"}}]}, stop])
+            batch = {"tool": "batch", "calls": [{"tool": "list_files", "path": "."}, {"tool": "read_file", "path": "App/GatitaApp.swift"}]}
+            return self._sse([{"choices": [{"index": 0, "delta": {"content": "<gatita-tool>" + json.dumps(batch) + "</gatita-tool>"}}]}, stop])
+        if any("MCP-CHECK" in text for text in user_texts):
+            if results:
+                inner = re.sub(r"</?gatita-tool-result[^>]*>", "", results[-1]["content"]).strip()
+                return self._sse([{"choices": [{"index": 0, "delta": {"content": "mock: " + inner}}]}, stop])
+            call = {"tool": "mcp__mock__echo", "text": "hi"}
+            return self._sse([{"choices": [{"index": 0, "delta": {"content": "<gatita-tool>" + json.dumps(call) + "</gatita-tool>"}}]}, stop])
+        if any("WRITE-CHECK" in text for text in user_texts):
+            if results:
+                return self._sse([{"choices": [{"index": 0, "delta": {"content": "mock: wrote"}}]}, stop])
+            batch = {"tool": "batch", "calls": [
+                {"tool": "edit_file", "path": "App/GatitaApp.swift", "old_text": "let app = 1", "new_text": "let app = 2"},
+                {"tool": "write_file", "path": "App/New.swift", "content": "let new = 1\n"}]}
+            return self._sse([{"choices": [{"index": 0, "delta": {"content": "<gatita-tool>" + json.dumps(batch) + "</gatita-tool>"}}]}, stop])
+        if any("RUN-CHECK" in text for text in user_texts):
+            if results:
+                denied = "denied" in results[-1]["content"]
+                return self._sse([{"choices": [{"index": 0, "delta": {"content": "mock: denied" if denied else "mock: ran"}}]}, stop])
+            run = {"tool": "run_command", "command": "swift --version"}
+            return self._sse([{"choices": [{"index": 0, "delta": {"content": "<gatita-tool>" + json.dumps(run) + "</gatita-tool>"}}]}, stop])
         if not results and any("ASK-ME" in text for text in user_texts):
             return self._sse([
                 {"choices": [{"index": 0, "delta": {"content": "<gatita-tool>{\"tool\": \"ask_user\", \"question\": \"Which file should I read?\"}</gatita-tool>"}}]},

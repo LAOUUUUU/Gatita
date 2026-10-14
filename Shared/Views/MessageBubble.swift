@@ -12,8 +12,19 @@ struct MessageBubble: View {
     let message: ChatMessage
     /// What to show besides the text. The default shows everything, as before.
     var transcriptView: TranscriptView = .verbose
-    /// Runs a button under a reply. Nil hides the buttons.
+    /// Runs a button under a message. Nil hides the buttons.
     var onAction: ((MessageAction) -> Void)? = nil
+    /// True while this reply is being read aloud.
+    var isSpeaking = false
+    /// True while any reply is on its way, when a question can't be edited or a reply regenerated.
+    var isBusy = false
+    /// True when the files this reply wrote or edited can be put back.
+    var canUndo = false
+    @State private var isEditing = false
+    /// The ⌘F words, marked in a question's text.
+    @Environment(\.findHighlight) private var findHighlight
+    @State private var editText = ""
+    @State private var hovering = false
 
     var body: some View {
         if message.role == "error" {
@@ -34,14 +45,21 @@ struct MessageBubble: View {
                         }
                     }
                 }
-                if !message.content.isEmpty {
-                    Text(message.content)
-                        .padding(10)
-                        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18))
+                if isEditing {
+                    editor
+                } else if !message.content.isEmpty {
+                    Text(FindInChat.highlighted(AttributedString(message.content), query: findHighlight))
+                        .textSelection(.enabled)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                 }
+                questionActions
             }
             .frame(maxWidth: 560, alignment: .trailing)
             .frame(maxWidth: .infinity, alignment: .trailing)
+            .contentShape(Rectangle())
+            .onHover { hovering = $0 }
         } else {
             assistantBubble
         }
@@ -109,13 +127,86 @@ struct MessageBubble: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// Copy, fork, pin, and reply under a finished reply. A pinned reply shows a filled pin.
+    /// The box a question is edited in, with Cancel and Send. Sending replaces the question and what came after it.
+    private var editor: some View {
+        VStack(alignment: .trailing, spacing: 8) {
+            TextField("Edit your message", text: $editText, axis: .vertical)
+                .textFieldStyle(.plain)
+                .lineLimit(1...12)
+                .padding(12)
+                .frame(minWidth: 280)
+                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.accent.opacity(0.6)))
+                .onSubmit(sendEdit)
+            HStack(spacing: 8) {
+                Button("Cancel") { isEditing = false }
+                    .buttonStyle(GatitaButtonStyle(.secondary))
+                    .keyboardShortcut(.cancelAction)
+                Button("Send", action: sendEdit)
+                    .buttonStyle(GatitaButtonStyle(.primary))
+                    .disabled(editText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isBusy)
+            }
+        }
+    }
+
+    private func sendEdit() {
+        guard !isBusy else { return }
+        isEditing = false
+        onAction?(.edit(editText))
+    }
+
+    /// Copy and edit under a question. On a Mac they show while the pointer is over it.
+    @ViewBuilder
+    private var questionActions: some View {
+        #if os(macOS)
+        let visible = hovering
+        #else
+        let visible = true
+        #endif
+        if let onAction, !isEditing, !message.content.isEmpty {
+            HStack(spacing: 2) {
+                actionButton("doc.on.doc", "Copy", .copy, onAction)
+                Button {
+                    editText = message.content
+                    isEditing = true
+                } label: {
+                    actionIcon("pencil")
+                }
+                .buttonStyle(.plain)
+                .help("Edit and send again")
+                .disabled(isBusy)
+            }
+            .opacity(visible ? 1 : 0)
+            .animation(.easeOut(duration: 0.15), value: visible)
+        }
+    }
+
+    /// Copy, read aloud, regenerate, fork, pin, and reply under a finished reply. A pinned reply shows a filled pin.
     @ViewBuilder
     private var actionRow: some View {
         if let onAction, !message.isStreaming, !message.content.isEmpty {
             let pinned = message.pinned == true
             HStack(spacing: 4) {
                 actionButton("doc.on.doc", "Copy", .copy, onAction)
+                actionButton(isSpeaking ? "stop.circle" : "speaker.wave.2", isSpeaking ? "Stop reading" : "Read aloud",
+                             .speak, onAction, tint: isSpeaking ? Theme.accent : nil)
+                GatitaMenuButton(id: "regenerate-\(message.id)", title: "Regenerate", alignTrailing: false, items: {
+                    [GatitaMenuItem(title: "Regenerate", subtitle: "With the model chosen now", icon: "arrow.clockwise") {
+                        onAction(.regenerate(model: nil))
+                    }] + ChatViewModel.models.enumerated().map { index, model in
+                        GatitaMenuItem(title: "With \(ChatViewModel.displayName(for: model))", icon: "cpu",
+                                       startsSection: index == 0) { onAction(.regenerate(model: model)) }
+                    }
+                }) {
+                    actionIcon("arrow.clockwise")
+                }
+                .disabled(isBusy)
+                .help("Regenerate")
+                if canUndo {
+                    actionButton("arrow.uturn.backward", "Undo this reply's file changes (changes made by commands are not undone)",
+                                 .undoChanges, onAction)
+                        .disabled(isBusy)
+                }
                 actionButton("arrow.triangle.branch", "Fork a new chat from here", .fork, onAction)
                 actionButton(pinned ? "pin.fill" : "pin", pinned ? "Unpin" : "Pin", .pin, onAction)
                 actionButton("arrowshape.turn.up.left", "Reply to this", .reply, onAction)
@@ -124,24 +215,32 @@ struct MessageBubble: View {
         }
     }
 
+    private func actionIcon(_ icon: String, tint: Color? = nil) -> some View {
+        Image(systemName: icon)
+            .font(.system(size: 13))
+            .foregroundStyle(tint ?? .secondary)
+            .frame(width: 26, height: 26)
+            .contentShape(Rectangle())
+    }
+
     private func actionButton(_ icon: String, _ help: String, _ action: MessageAction,
-                              _ perform: @escaping (MessageAction) -> Void) -> some View {
+                              _ perform: @escaping (MessageAction) -> Void, tint: Color? = nil) -> some View {
         Button {
             perform(action)
         } label: {
-            Image(systemName: icon)
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-                .frame(width: 26, height: 26)
+            actionIcon(icon, tint: tint)
         }
         .buttonStyle(.plain)
         .help(help)
     }
 }
 
-/// Renders a reply's Markdown: headings, bullets, numbered items, code blocks, and inline bold, italic, and code.
+/// Renders a reply's Markdown: headings, nested lists, numbered steps, checklists, callouts, tables (which can turn
+/// into charts), charts, code, rules, and inline bold, italic, and code.
 struct MarkdownText: View {
     let source: String
+    /// The ⌘F words, marked in the text.
+    @Environment(\.findHighlight) private var findHighlight
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -160,62 +259,53 @@ struct MarkdownText: View {
                 .font(headingFont(level))
                 .fontWeight(.semibold)
         case .paragraph(let text):
-            inline(text)
-        case .bullet(let text):
+            textOrMath(text)
+        case .bullet(let text, let indent):
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text("•")
-                inline(text)
+                Text(["•", "◦", "–"][indent % 3])
+                    .foregroundStyle(indent == 0 ? Theme.accent : .secondary)
+                textOrMath(text)
             }
-        case .numbered(let number, let text):
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text("\(number).")
-                    .monospacedDigit()
-                inline(text)
+            .padding(.leading, CGFloat(indent) * 22)
+        case .numbered(let number, let text, let indent):
+            StepView(number: number, text: text, indent: indent)
+        case .code(let language, let text):
+            switch RichCode.kind(language: language) {
+            case .diagram:
+                MermaidBlockView(code: text)
+            case .math:
+                MathBlockView(code: text)
+            case .code:
+                CodeBlockView(language: language, code: text)
+                    .equatable()
             }
-        case .code(_, let text):
-            ScrollView(.horizontal) {
-                Text(text)
-                    .font(.system(.callout, design: .monospaced))
-                    .padding(8)
-            }
-            .background(Color.black.opacity(0.25), in: RoundedRectangle(cornerRadius: 8))
-        case .table(let header, let rows):
-            tableView(header: header, rows: rows)
+        case .table(let header, let rows, let alignments):
+            MarkdownTableView(header: header, rows: rows, alignments: alignments)
         case .chart(let spec):
             ChartBlockView(spec: spec)
+        case .checklist(let items):
+            ChecklistView(items: items)
+        case .callout(let kind, let text):
+            CalloutView(kind: kind, text: text)
+        case .rule:
+            Divider()
+                .overlay(Color.white.opacity(0.12))
+                .padding(.vertical, 4)
         }
     }
 
-    /// A table with a bold header, a rule under it, and a border. Short rows are padded with empty cells.
-    private func tableView(header: [String], rows: [[String]]) -> some View {
-        let columns = max(header.count, rows.map(\.count).max() ?? 0)
-        func padded(_ cells: [String]) -> [String] {
-            (0..<columns).map { $0 < cells.count ? cells[$0] : "" }
+    /// Text with math in it is drawn with LaTeX; anything else stays plain Markdown text.
+    @ViewBuilder
+    private func textOrMath(_ text: String) -> some View {
+        if MathDetection.containsMath(text) {
+            MathText(text: text)
+        } else {
+            inline(text)
         }
-        return ScrollView(.horizontal) {
-            Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 8) {
-                GridRow {
-                    ForEach(Array(padded(header).enumerated()), id: \.offset) { _, cell in
-                        inline(cell).fontWeight(.semibold)
-                    }
-                }
-                Divider()
-                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                    GridRow {
-                        ForEach(Array(padded(row).enumerated()), id: \.offset) { _, cell in
-                            inline(cell)
-                        }
-                    }
-                }
-            }
-            .padding(10)
-        }
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.04)))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.12)))
     }
 
     private func inline(_ text: String) -> Text {
-        Text(attributed(text))
+        Text(FindInChat.highlighted(attributed(text), query: findHighlight))
     }
 
     private func attributed(_ text: String) -> AttributedString {

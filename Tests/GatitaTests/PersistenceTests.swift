@@ -145,4 +145,11 @@ final class PersistenceTests: XCTestCase {
         XCTAssertTrue(reader.run(name: "read_report", arguments: #"{"name": "gatita.log"}"#).contains("hello log"))
         XCTAssertTrue(reader.run(name: "read_report", arguments: #"{"name": "../../etc/hosts"}"#).hasPrefix("error:"))
     }
+
+    func testThePreviewShowsWordsNotMarkdown() {
+        let reply = ChatMessage(role: "assistant", content: "## Launch plan\n\n- [x] Ship it")
+        XCTAssertEqual(ChatHistory.preview(for: [reply]), "Launch plan")
+        let code = ChatMessage(role: "assistant", content: "```swift\nlet a = 1\n```\nThat sets **a**.")
+        XCTAssertEqual(ChatHistory.preview(for: [code]), "That sets a.")
+    }
 }

@@ -68,7 +68,7 @@ final class ToolHelpTests: XCTestCase {
         XCTAssertTrue(writable.toolNames.contains("edit_file"))
         XCTAssertTrue(writable.toolNames.contains("run_command"))
         let web = ProjectTools(root: nil, allowWrites: false, connectors: ["web"], allowsReports: false)
-        XCTAssertEqual(Set(web.toolNames), ["web_fetch", "web_curl"])
+        XCTAssertEqual(Set(web.toolNames), ["batch", "web_fetch", "web_curl"])
     }
 
     // MARK: - find_files and search_text

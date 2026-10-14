@@ -11,23 +11,38 @@ struct ShopView: View {
     @State private var pending: ShopItem?
     @State private var message = ""
     @State private var category: ShopCategory = .plugins
+    @State private var dialog: GatitaDialogSpec?
+    /// Set when the shop is a sheet: the header then has a close button.
+    var onClose: (() -> Void)? = nil
+
+    private static let intro = "Everything here is free and bundled with the app. Adding one shows what it does first."
 
     var body: some View {
+        VStack(spacing: 0) {
+            if let onClose {
+                GatitaSheetHeader(title: "Shop", subtitle: Self.intro, escapeCloses: dialog == nil, onClose: onClose)
+            }
+            list
+        }
+        .background(Theme.background)
+        .gatitaDialog($dialog) {
+            if let pending { add(pending) }
+            pending = nil
+        }
+    }
+
+    private var list: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                Text("Shop")
-                    .font(.title2.weight(.semibold))
-                Text("Everything here is free and bundled with the app. Adding one shows what it does first.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-
-                Picker("Category", selection: $category) {
-                    ForEach(ShopCategory.allCases) { option in
-                        Text(option.title).tag(option)
-                    }
+                if onClose == nil {
+                    Text("Shop")
+                        .font(.title2.weight(.semibold))
+                    Text(Self.intro)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
+
+                GatitaTabs(options: ShopCategory.allCases, selection: $category, title: \.title)
                 Text(category.intro)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -46,14 +61,20 @@ struct ShopView: View {
             .frame(maxWidth: 640, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
-        .background(Theme.background)
-        .confirmationDialog("Add this?",
-                            isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }),
-                            titleVisibility: .visible,
-                            presenting: pending) { item in
-            Button("Add \(item.name)") { add(item) }
-        } message: { item in
-            Text(Shop.permissions(of: item).joined(separator: "\n"))
+    }
+
+    /// Asks before adding, and says what the item will be allowed to do.
+    private func ask(_ item: ShopItem) {
+        pending = item
+        dialog = GatitaDialogSpec(icon: icon(for: item), title: "Add \(item.name)?",
+                                  message: Shop.permissions(of: item).joined(separator: "\n"), confirm: "Add")
+    }
+
+    private func icon(for item: ShopItem) -> String {
+        switch item.kind {
+        case .plugin: "puzzlepiece.extension"
+        case .skill: "slider.horizontal.3"
+        case .connector: "point.3.connected.trianglepath.dotted"
         }
     }
 
@@ -73,15 +94,16 @@ struct ShopView: View {
             Spacer(minLength: 8)
             if isInstalled(item) {
                 Button("Remove") { remove(item) }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(GatitaButtonStyle(.secondary))
             } else {
-                Button("Get") { pending = item }
-                    .buttonStyle(.borderedProminent)
+                Button("Get") { ask(item) }
+                    .buttonStyle(GatitaButtonStyle(.primary))
             }
         }
-        .padding(14)
+        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
+        .background(Theme.surface.opacity(0.75), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.06)))
     }
 
     private func isInstalled(_ item: ShopItem) -> Bool {

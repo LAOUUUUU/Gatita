@@ -9,6 +9,30 @@
 		<string>_gatita-host._tcp</string>
 		<string>_gatita-host._udp</string>
 	</array>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Gatita listens only after you press the mic button, until you press it again, to type what you say into the message box.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Gatita turns what you say into text for the message box, with Apple's speech recognition.</string>
+	<key>NSServices</key>
+	<array>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Ask Gatita</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>askGatita</string>
+			<key>NSPortName</key>
+			<string>Gatita</string>
+			<key>NSRequiredContext</key>
+			<dict/>
+			<key>NSSendTypes</key>
+			<array>
+				<string>NSStringPboardType</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>Gatita reads your events when you ask about your schedule. It never changes them.</string>
 </dict>

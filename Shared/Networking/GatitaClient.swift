@@ -29,6 +29,12 @@ final class GatitaClient {
     private let tools: ProjectTools?
     private let extraInstructions: String?
     private let tasks: TaskRegistry?
+    /// Runs an MCP tool ("mcp__<server>__<tool>") with its block, through `MCPHub`. Nil offers none.
+    private let mcp: (@MainActor @Sendable (String, String) async -> String)?
+    /// Records what write_file and edit_file change, so the reply can be undone. Nil records nothing.
+    private let checkpoints: CheckpointRecorder?
+    /// Asked before run_command and run_background run. Nil runs them without asking.
+    private let approveCommand: (@MainActor @Sendable (CommandApproval.Request) async -> CommandApproval.Decision)?
     private let session: URLSession
 
     init(apiKey: String,
@@ -36,13 +42,19 @@ final class GatitaClient {
          model: String = "gatita-7.1-max",
          tools: ProjectTools? = nil,
          extraInstructions: String? = nil,
-         tasks: TaskRegistry? = nil) {
+         tasks: TaskRegistry? = nil,
+         approveCommand: (@MainActor @Sendable (CommandApproval.Request) async -> CommandApproval.Decision)? = nil,
+         checkpoints: CheckpointRecorder? = nil,
+         mcp: (@MainActor @Sendable (String, String) async -> String)? = nil) {
         self.apiKey = apiKey
         self.baseURL = baseURL
         self.model = model
         self.tools = tools
         self.extraInstructions = extraInstructions
         self.tasks = tasks
+        self.approveCommand = approveCommand
+        self.checkpoints = checkpoints
+        self.mcp = mcp
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 120
         config.waitsForConnectivity = false
@@ -157,20 +169,13 @@ final class GatitaClient {
                 // The model's words before the block, then the block itself, as it wrote them.
                 history.append(WireMessage(role: "assistant",
                                            content: turn.visible + Self.openTag + block + Self.closeTag))
-                toolNumber += 1
-                let id = "t\(toolNumber)"
                 let name = Self.toolName(in: block)
-                onEvent(.toolStarted(id: id, name: name, arguments: block))
-                let change = tools.changePreview(name: name, arguments: block)
                 let result: String
-                if let handled = await runTaskTool(name: name, arguments: block, tools: tools) {
-                    result = handled
+                if name == "batch" {
+                    result = await runBatch(block, tools: tools, toolNumber: &toolNumber, onEvent: onEvent)
                 } else {
-                    result = await tools.execute(name: name, arguments: block)
-                }
-                onEvent(.toolFinished(id: id, name: name, result: result))
-                if let change, !result.hasPrefix("error:") {
-                    onEvent(.fileChanged(id: id, change: change))
+                    toolNumber += 1
+                    result = await runCall(name: name, block: block, tools: tools, id: "t\(toolNumber)", onEvent: onEvent)
                 }
                 // The note is for the model only, so the chat still sees an error as an error.
                 let repeated = ToolRepeat.isRepeat(block, of: lastBlock)
@@ -202,6 +207,77 @@ final class GatitaClient {
             Self.goOn(after: turn.visible, note: note, history: &history)
         }
         throw GatitaError.toolRoundLimit
+    }
+
+    /// Runs one tool call and reports it to the chat: started, finished, and the file change it made, if any.
+    private func runCall(name: String, block: String, tools: ProjectTools, id: String,
+                         onEvent: (StreamEvent) -> Void) async -> String {
+        onEvent(.toolStarted(id: id, name: name, arguments: block))
+        let change = tools.changePreview(name: name, arguments: block)
+        // The file as it was, before the reply's first change to it.
+        let changed = name == "write_file" || name == "edit_file"
+            ? ToolArguments.parse(block)?["path"].flatMap(tools.relativePath) : nil
+        if let changed { checkpoints?.before(changed) }
+        let result: String
+        if let denial = await askBeforeCommand(name: name, block: block, tools: tools) {
+            result = denial
+        } else if name.hasPrefix("mcp__"), let mcp {
+            result = await mcp(name, block)
+        } else if let handled = await runTaskTool(name: name, arguments: block, tools: tools) {
+            result = handled
+        } else {
+            result = await tools.execute(name: name, arguments: block)
+        }
+        if let changed, !result.hasPrefix("error:") { checkpoints?.after(changed) }
+        onEvent(.toolFinished(id: id, name: name, result: result))
+        if let change, !result.hasPrefix("error:") {
+            onEvent(.fileChanged(id: id, change: change))
+        }
+        return result
+    }
+
+    /// Waits for the user's answer before a command runs. The denial to send back, or nil to go ahead. A command
+    /// that is not allowed at all, or with commands off, is left for the tool to refuse.
+    private func askBeforeCommand(name: String, block: String, tools: ProjectTools) async -> String? {
+        // An MCP tool is asked about by its name, with its arguments shown. "Always" allows that one tool.
+        if name.hasPrefix("mcp__") {
+            guard mcp != nil, let approveCommand else { return nil }
+            let arguments = MCPConfig.arguments(in: block)
+                .flatMap { try? JSONSerialization.data(withJSONObject: $0, options: [.sortedKeys]) }
+                .flatMap { String(data: $0, encoding: .utf8) } ?? ""
+            let shown = String((name + " " + arguments).prefix(400))
+            let decision = await approveCommand(CommandApproval.Request(command: shown, rule: name))
+            return decision == .deny ? CommandApproval.denial(name) : nil
+        }
+        guard name == "run_command" || name == "run_background", let approveCommand, tools.allowCommands,
+              let command = ToolArguments.parse(block)?["command"],
+              let rule = CommandApproval.rule(for: command, allowed: tools.commands) else { return nil }
+        let decision = await approveCommand(CommandApproval.Request(command: command, rule: rule))
+        return decision == .deny ? CommandApproval.denial(command) : nil
+    }
+
+    /// Runs each call of a batch in order, each shown in the chat as its own tool call, and joins their results.
+    /// A batch that can't be read shows as one failed "batch" call.
+    private func runBatch(_ block: String, tools: ProjectTools, toolNumber: inout Int,
+                          onEvent: (StreamEvent) -> Void) async -> String {
+        let calls: [String]
+        do {
+            calls = try ToolBatch.calls(in: block)
+        } catch {
+            toolNumber += 1
+            let result = "error: \(error.localizedDescription)"
+            onEvent(.toolStarted(id: "t\(toolNumber)", name: "batch", arguments: block))
+            onEvent(.toolFinished(id: "t\(toolNumber)", name: "batch", result: result))
+            return result
+        }
+        var results: [(name: String, result: String)] = []
+        for call in calls {
+            guard !Task.isCancelled else { break }
+            toolNumber += 1
+            let name = Self.toolName(in: call)
+            results.append((name, await runCall(name: name, block: call, tools: tools, id: "t\(toolNumber)", onEvent: onEvent)))
+        }
+        return ToolBatch.combine(results)
     }
 
     /// Adds what the model said so far and the note asking it to go on. An empty message is not sent back, so the

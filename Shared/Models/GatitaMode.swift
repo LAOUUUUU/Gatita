@@ -9,11 +9,13 @@ import Foundation
 /// Chat is regular chat: no project files, edits, commands, plugin commands, or GitHub.
 /// Code works on a project: it reads and edits files (when turned on), runs allowed commands, uses plugins,
 /// and reads GitHub, which needs a project folder.
-nonisolated enum GatitaMode: String, Codable, CaseIterable, Sendable {
+nonisolated enum GatitaMode: String, Codable, CaseIterable, Identifiable, Sendable {
     case chat
     case code
     /// Chats sent to the paired Mac, which answers with its own key and no project tools.
     case remote
+
+    var id: String { rawValue }
 
     var displayName: String {
         switch self {

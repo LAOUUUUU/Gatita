@@ -17,6 +17,16 @@ nonisolated struct AppSettings: Codable, Equatable, Sendable {
     var keepAwake: Bool
     var transcriptView: TranscriptView
     var customInstructions: String
+    /// Pressing ⌘ twice opens the quick panel. Mac only.
+    var doubleCommandOpensPanel: Bool
+    /// Pressing ⌘ twice starts with a screenshot, as Claude's quick entry does. Mac only.
+    var doubleCommandTakesScreenshot: Bool
+    /// Gatita remembers facts about you across chats (memory.json). On unless turned off.
+    var memoryEnabled: Bool
+    /// Each command waits for your answer before it runs. On unless turned off.
+    var askBeforeCommands: Bool
+    /// Commands you chose "Always allow" for, by project folder, such as ["/Users/me/App": ["swift test"]].
+    var commandRules: [String: [String]]
 
     init(projectRoot: String = "",
          model: String = "gatita-7.1-max",
@@ -27,7 +37,12 @@ nonisolated struct AppSettings: Codable, Equatable, Sendable {
          mode: GatitaMode = .code,
          keepAwake: Bool = false,
          transcriptView: TranscriptView = .normal,
-         customInstructions: String = "") {
+         customInstructions: String = "",
+         doubleCommandOpensPanel: Bool = true,
+         doubleCommandTakesScreenshot: Bool = true,
+         memoryEnabled: Bool = true,
+         askBeforeCommands: Bool = true,
+         commandRules: [String: [String]] = [:]) {
         self.projectRoot = projectRoot
         self.model = model
         self.connectors = connectors
@@ -38,10 +53,16 @@ nonisolated struct AppSettings: Codable, Equatable, Sendable {
         self.keepAwake = keepAwake
         self.transcriptView = transcriptView
         self.customInstructions = customInstructions
+        self.doubleCommandOpensPanel = doubleCommandOpensPanel
+        self.doubleCommandTakesScreenshot = doubleCommandTakesScreenshot
+        self.memoryEnabled = memoryEnabled
+        self.askBeforeCommands = askBeforeCommands
+        self.commandRules = commandRules
     }
 
     private enum CodingKeys: String, CodingKey {
         case projectRoot, model, connectors, allowWrites, allowCommands, skillID, mode, keepAwake, transcriptView, customInstructions
+        case doubleCommandOpensPanel, doubleCommandTakesScreenshot, memoryEnabled, askBeforeCommands, commandRules
     }
 
     /// Missing keys take their defaults, so a settings file from an older version still loads.
@@ -58,6 +79,13 @@ nonisolated struct AppSettings: Codable, Equatable, Sendable {
         keepAwake = try values.decodeIfPresent(Bool.self, forKey: .keepAwake) ?? defaults.keepAwake
         transcriptView = try values.decodeIfPresent(TranscriptView.self, forKey: .transcriptView) ?? defaults.transcriptView
         customInstructions = try values.decodeIfPresent(String.self, forKey: .customInstructions) ?? defaults.customInstructions
+        doubleCommandOpensPanel = try values.decodeIfPresent(Bool.self, forKey: .doubleCommandOpensPanel)
+            ?? defaults.doubleCommandOpensPanel
+        doubleCommandTakesScreenshot = try values.decodeIfPresent(Bool.self, forKey: .doubleCommandTakesScreenshot)
+            ?? defaults.doubleCommandTakesScreenshot
+        memoryEnabled = try values.decodeIfPresent(Bool.self, forKey: .memoryEnabled) ?? defaults.memoryEnabled
+        askBeforeCommands = try values.decodeIfPresent(Bool.self, forKey: .askBeforeCommands) ?? defaults.askBeforeCommands
+        commandRules = try values.decodeIfPresent([String: [String]].self, forKey: .commandRules) ?? defaults.commandRules
     }
 }
 

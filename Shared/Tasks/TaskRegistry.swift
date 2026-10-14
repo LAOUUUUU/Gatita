@@ -49,6 +49,13 @@ final class TaskRegistry {
 
     private(set) var background: [BackgroundTask] = []
     private(set) var agents: [Subagent] = []
+    /// Told when a background command ends on its own (not when it was stopped), so Gatita can send a notification.
+    @ObservationIgnored var onTaskFinished: ((Notifier.Note) -> Void)?
+
+    /// Background commands and subagents still running. The menu bar item shows while there are any.
+    var runningCount: Int {
+        background.filter { $0.status == .running }.count + agents.filter { $0.status == .running }.count
+    }
     #if os(macOS)
     @ObservationIgnored private var processes: [String: BackgroundProcess] = [:]
     #endif
@@ -91,10 +98,20 @@ final class TaskRegistry {
         process.stop()
         return true
     }
+
+    /// Stops every background command that is still running, as Gatita quits, so none keeps running without it.
+    /// Returns how many were stopped.
+    @discardableResult
+    func stopAll() -> Int {
+        background.filter { $0.status == .running }.map(\.id).filter { stopBackground($0) }.count
+    }
     #else
     func startBackground(_ argv: [String], command: String, in root: URL) throws -> String {
         throw ToolError("background commands only run on the Mac")
     }
+
+    @discardableResult
+    func stopAll() -> Int { 0 }
 
     func stopBackground(_ id: String) -> Bool {
         false
@@ -142,6 +159,9 @@ final class TaskRegistry {
         background[index].finishedAt = Date()
         if background[index].status == .running {
             background[index].status = exitCode == 0 ? .done : .failed
+            let task = background[index]
+            onTaskFinished?(Notifier.backgroundTaskFinished(command: task.command, exitCode: exitCode,
+                                                            seconds: Date().timeIntervalSince(task.startedAt)))
         }
     }
     #endif

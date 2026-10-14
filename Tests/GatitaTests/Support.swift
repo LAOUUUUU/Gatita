@@ -15,6 +15,7 @@ enum RepoPaths {
         .deletingLastPathComponent()   // Tests
         .deletingLastPathComponent()   // the repository
     static let mockServer = root.appendingPathComponent("Tests/MockServer/mock_server.py")
+    static let mockMCPServer = root.appendingPathComponent("Tests/MockServer/mock_mcp_server.py")
     static let plugins = root.appendingPathComponent("Tests/Fixtures/plugins")
 }
 

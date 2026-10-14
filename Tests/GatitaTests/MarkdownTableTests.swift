@@ -18,7 +18,7 @@ final class MarkdownTableTests: XCTestCase {
         let source = "Intro\n| a | b |\n|:--|--:|\n| 1 | 2 |\nAfter"
         XCTAssertEqual(MarkdownBlocks.parse(source), [
             .paragraph(text: "Intro"),
-            .table(header: ["a", "b"], rows: [["1", "2"]]),
+            .table(header: ["a", "b"], rows: [["1", "2"]], alignments: [.leading, .trailing]),
             .paragraph(text: "After"),
         ])
     }

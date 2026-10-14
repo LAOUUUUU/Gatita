@@ -14,6 +14,10 @@ nonisolated struct Conversation: Codable, Identifiable, Equatable, Sendable {
     var customTitle: String? = nil
     /// The mode the chat was started in. A chat stays in that mode. Nil in chats saved before modes existed.
     var mode: GatitaMode? = nil
+    /// Shown at the top of the sidebar. Nil (not pinned) in chats saved before pins existed.
+    var pinned: Bool? = nil
+    /// The sidebar folder the chat is in, or nil for none.
+    var folder: String? = nil
 
     var title: String {
         customTitle ?? ChatHistory.title(for: messages)
@@ -51,10 +55,12 @@ nonisolated enum ChatHistory {
         return question.count > titleLength ? String(question.prefix(titleLength)) + "…" : question
     }
 
-    /// The first line of the latest reply, shortened.
+    /// The first line of words in the latest reply, without Markdown marks or code, shortened.
     static func preview(for messages: [ChatMessage]) -> String {
         guard let reply = messages.last(where: { $0.role == "assistant" && !$0.content.isEmpty }) else { return "" }
-        let firstLine = reply.content.components(separatedBy: "\n").first ?? ""
+        let firstLine = SpeechText.plain(from: reply.content)
+            .components(separatedBy: "\n")
+            .first { !$0.isEmpty && $0 != "Code block skipped." && $0 != "Chart skipped." } ?? ""
         return String(firstLine.trimmingCharacters(in: .whitespaces).prefix(previewLength))
     }
 
@@ -86,6 +92,21 @@ nonisolated enum ChatHistory {
         line = line.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !line.isEmpty else { return nil }
         return String(line.prefix(generatedTitleLength))
+    }
+
+    /// The chats with one chat saved: its messages, mode, and time replaced, and its title, pin, and folder kept.
+    /// A chat saved for the first time is added at the end.
+    static func updated(_ chats: [Conversation], id: UUID, messages: [ChatMessage], mode: GatitaMode,
+                        at date: Date) -> [Conversation] {
+        var chats = chats
+        let old = chats.first { $0.id == id }
+        chats.removeAll { $0.id == id }
+        var chat = Conversation(id: id, updatedAt: date, messages: messages, mode: mode)
+        chat.customTitle = old?.customTitle
+        chat.pinned = old?.pinned
+        chat.folder = old?.folder
+        chats.append(chat)
+        return chats
     }
 
     static func load(from file: URL) -> [Conversation] {

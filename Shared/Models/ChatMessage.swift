@@ -9,10 +9,17 @@
 import Foundation
 
 /// A picture the user attached. Its bytes go to the model as a data URL, and it stays in the saved chat.
-struct ChatImage: Codable, Hashable {
+nonisolated struct ChatImage: Codable, Hashable, Sendable {
     let name: String
     let mimeType: String
     let data: Data
+
+    /// Nonisolated, so screenshots can be made into attachments off the main actor.
+    nonisolated init(name: String, mimeType: String, data: Data) {
+        self.name = name
+        self.mimeType = mimeType
+        self.data = data
+    }
 }
 
 struct ChatMessage: Identifiable, Codable, Hashable {
@@ -36,10 +43,8 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     /// When the reply finished. Optional, so older chats still load.
     var respondedAt: Date?
 
-    /// The pictures attached to this message, or none.
-    var attachedImages: [ChatImage] { images ?? [] }
-
-    init(id: UUID = UUID(),
+    /// Nonisolated, so code off the main actor (such as MessageActions) can make a message.
+    nonisolated init(id: UUID = UUID(),
          role: String,
          content: String,
          reasoning: String = "",
@@ -65,9 +70,14 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         self.respondedAt = respondedAt
     }
 
+    /// The pictures attached to this message, or none.
+    var attachedImages: [ChatImage] { images ?? [] }
+
     /// What the model receives: the message plus its attachments.
     var sentText: String {
-        attachedContext.isEmpty ? content : content + "\n\n" + attachedContext
+        guard !attachedContext.isEmpty else { return content }
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? attachedContext : trimmed + "\n\n" + attachedContext
     }
 }
 

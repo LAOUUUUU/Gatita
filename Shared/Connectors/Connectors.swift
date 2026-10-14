@@ -70,7 +70,7 @@ nonisolated enum Connectors {
         "github_pr_checks": #"{"tool": "github_pr_checks", "number": "<pull request number>"} shows its CI checks."#,
         "github_list_issues": #"{"tool": "github_list_issues", "state": "open, closed, or all (optional, default open)"} lists issues."#,
         "github_view_issue": #"{"tool": "github_view_issue", "number": "<issue number>"} shows one issue as JSON."#,
-        "web_fetch": #"{"tool": "web_fetch", "url": "<https address>"} reads the text of a public https page, up to 20,000 characters."#,
+        "web_fetch": #"{"tool": "web_fetch", "url": "<https address>"} reads the text of a public https page, up to 20,000 characters. To read up to 5 pages in one call, send "urls" with one address per line instead of "url"; each page comes back between start and end lines."#,
         "web_curl": #"{"tool": "web_curl", "url": "<https address>"} sends a GET request and shows the status, the content type, and the body as text, up to 20,000 characters. Use it for APIs and JSON. Use web_fetch to read a page."#,
         "calendar_events": #"{"tool": "calendar_events", "start": "<day as YYYY-MM-DD, optional, default today>", "days": "<number of days, optional, default 7, up to 31>"} lists the events in that window, earliest first."#,
         "weather": #"{"tool": "weather", "place": "<city, optionally with its region or country, such as Toronto, Canada>", "days": "<1 to 7, optional, default 3>", "units": "<metric or imperial, optional, default metric>"} shows the weather now and a daily forecast."#,
@@ -89,7 +89,9 @@ nonisolated enum Connectors {
     /// need the Mac host.
     static func run(_ tool: String, arguments: [String: String], root: URL?) async throws -> String {
         switch tool {
-        case "web_fetch": return try await WebFetch.fetch(arguments["url"] ?? "")
+        case "web_fetch":
+            let addresses = WebFetch.addresses(arguments)
+            return addresses.count > 1 ? try await WebFetch.fetchMany(addresses) : try await WebFetch.fetch(addresses.first ?? "")
         case "web_curl": return try await WebCurl.fetch(arguments["url"] ?? "")
         case "weather": return try await Weather.run(arguments)
         case "wikipedia_search", "wikipedia_page": return try await Wikipedia.run(tool, arguments: arguments)

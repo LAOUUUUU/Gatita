@@ -6,6 +6,12 @@
 	objectVersion = 110;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		061A7B58D4CA44709E96C192 /* MCP in Frameworks */ = {isa = PBXBuildFile; productRef = 07C6F273084440D49225E7B6 /* MCP */; };
+		BB5A7BFF317547118BB7961E /* LaTeXSwiftUI in Frameworks */ = {isa = PBXBuildFile; productRef = 7B7FBFE616FE47A4B5959F87 /* LaTeXSwiftUI */; };
+		89F58730FDC94D798D714D01 /* BeautifulMermaid in Frameworks */ = {isa = PBXBuildFile; productRef = 8D43A2C59F584CE982080EF2 /* BeautifulMermaid */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		08532C8930785FAE00E3BF67 /* Gatita.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Gatita.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		15A378DBD10E4C21AF46638E /* GatitaTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GatitaTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -43,6 +49,9 @@
 		08532C6B307857E600E3BF67 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
+				061A7B58D4CA44709E96C192 /* MCP in Frameworks */,
+				BB5A7BFF317547118BB7961E /* LaTeXSwiftUI in Frameworks */,
+				89F58730FDC94D798D714D01 /* BeautifulMermaid in Frameworks */,
 			);
 		};
 		ADBA5D777DBB46D5BEAE40D8 /* Frameworks */ = {
@@ -86,6 +95,11 @@
 				9CD9F5D23D4F4920889E701D /* macOS */,
 			);
 			name = Gatita;
+			packageProductDependencies = (
+				07C6F273084440D49225E7B6 /* MCP */,
+				7B7FBFE616FE47A4B5959F87 /* LaTeXSwiftUI */,
+				8D43A2C59F584CE982080EF2 /* BeautifulMermaid */,
+			);
 			productName = Gatita;
 			productReference = 08532C8930785FAE00E3BF67 /* Gatita.app */;
 			productType = "com.apple.product-type.application";
@@ -136,6 +150,11 @@
 			);
 			mainGroup = 08532C65307857E600E3BF67;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				2FC5C1E043134AADB6ED2C59 /* XCRemoteSwiftPackageReference "swift-sdk" */,
+				3DAA948693C2421294645532 /* XCRemoteSwiftPackageReference "LaTeXSwiftUI" */,
+				C3380DDBA1444D3981F2485E /* XCRemoteSwiftPackageReference "beautiful-mermaid-swift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 08532C65307857E600E3BF67;
 			projectDirPath = "";
@@ -316,7 +335,8 @@
 				CURRENT_PROJECT_VERSION = 6;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = readonly;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
+				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = Gatita.entitlements;
@@ -365,7 +385,8 @@
 				CURRENT_PROJECT_VERSION = 6;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = readonly;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
+				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = Gatita.entitlements;
@@ -471,6 +492,51 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		2FC5C1E043134AADB6ED2C59 /* XCRemoteSwiftPackageReference "swift-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/modelcontextprotocol/swift-sdk";
+			requirement = {
+				kind = upToNextMinorVersion;
+				minimumVersion = 0.12.1;
+			};
+		};
+		3DAA948693C2421294645532 /* XCRemoteSwiftPackageReference "LaTeXSwiftUI" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/colinc86/LaTeXSwiftUI";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
+			};
+		};
+		C3380DDBA1444D3981F2485E /* XCRemoteSwiftPackageReference "beautiful-mermaid-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/lukilabs/beautiful-mermaid-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.4;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		07C6F273084440D49225E7B6 /* MCP */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 2FC5C1E043134AADB6ED2C59 /* XCRemoteSwiftPackageReference "swift-sdk" */;
+			productName = MCP;
+		};
+		7B7FBFE616FE47A4B5959F87 /* LaTeXSwiftUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 3DAA948693C2421294645532 /* XCRemoteSwiftPackageReference "LaTeXSwiftUI" */;
+			productName = LaTeXSwiftUI;
+		};
+		8D43A2C59F584CE982080EF2 /* BeautifulMermaid */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C3380DDBA1444D3981F2485E /* XCRemoteSwiftPackageReference "beautiful-mermaid-swift" */;
+			productName = BeautifulMermaid;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 08532C66307857E600E3BF67 /* Project object */;
 	validationLevel = 1;

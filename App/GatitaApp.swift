@@ -35,17 +35,24 @@ struct GatitaApp: App {
             ChatView(viewModel: chatViewModel, clientSession: nil)
             #elseif os(iOS) || os(macOS) || os(visionOS)
             HostRootView(viewModel: chatViewModel, host: hostSession)
+                #if os(macOS)
+                .modifier(QuickPanelStarter(viewModel: chatViewModel))
+                #endif
             #else
             ChatView(viewModel: chatViewModel, clientSession: clientSession)
             #endif
         }
         .defaultSize(width: 1100, height: 720)
+        #if os(macOS) || os(iOS) || os(visionOS)
+        .commands { GatitaCommands(viewModel: chatViewModel) }
+        #endif
         #if os(macOS)
         .windowStyle(.hiddenTitleBar)
         #endif
 
         #if os(macOS)
-        MenuBarExtra {
+        // Only while something long runs in the background, or the Mac is kept awake.
+        MenuBarExtra(isInserted: Binding(get: { chatViewModel.showsMenuBarItem }, set: { _ in })) {
             MenuBarMenu(viewModel: chatViewModel)
         } label: {
             MenuBarLabel(viewModel: chatViewModel)

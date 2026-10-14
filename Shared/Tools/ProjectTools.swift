@@ -29,6 +29,10 @@ nonisolated struct ProjectTools: Sendable {
     let allowsSubagents: Bool
     /// Whether the failure-report tools and the question tool are offered. Off for a Mac chat.
     let allowsReports: Bool
+    /// Where Gatita's memory is kept, which turns on remember, forget, and list_memories. Nil when memory is off.
+    let memoryFile: URL?
+    /// More tool lines, from MCP servers (`MCPHub.toolHelp`). Their calls are run by the client, not here.
+    let extraToolHelp: [String]
 
     init(root: URL?,
          allowWrites: Bool,
@@ -37,7 +41,9 @@ nonisolated struct ProjectTools: Sendable {
          logDirectory: URL? = nil,
          connectors: Set<String> = [],
          allowsSubagents: Bool = true,
-         allowsReports: Bool = true) {
+         allowsReports: Bool = true,
+         memoryFile: URL? = nil,
+         extraToolHelp: [String] = []) {
         self.root = root?.standardizedFileURL.resolvingSymlinksInPath()
         self.allowWrites = allowWrites
         self.allowCommands = allowCommands
@@ -46,6 +52,8 @@ nonisolated struct ProjectTools: Sendable {
         self.connectors = connectors
         self.allowsSubagents = allowsSubagents
         self.allowsReports = allowsReports
+        self.memoryFile = memoryFile
+        self.extraToolHelp = extraToolHelp
     }
 
     /// Background commands need a project folder and running commands turned on.
@@ -80,7 +88,9 @@ nonisolated struct ProjectTools: Sendable {
                 ? "<gatita-tool>{\"tool\": \"list_files\", \"path\": \".\"}</gatita-tool>"
                 : allowsReports
                     ? "<gatita-tool>{\"tool\": \"list_reports\"}</gatita-tool>"
-                    : "<gatita-tool>{\"tool\": \"web_fetch\", \"url\": \"https://example.com\"}</gatita-tool>",
+                    : connectors.isEmpty && memoryFile != nil
+                        ? "<gatita-tool>{\"tool\": \"list_memories\"}</gatita-tool>"
+                        : "<gatita-tool>{\"tool\": \"web_fetch\", \"url\": \"https://example.com\"}</gatita-tool>",
             "The result comes back in your next message inside <gatita-tool-result> tags. Never invent results. When you have what you need, answer normally without tool blocks.",
             "After each result, either call the next tool or answer the user. Never end a message with nothing, or with a colon and no tool block.",
         ]
@@ -89,11 +99,12 @@ nonisolated struct ProjectTools: Sendable {
         }
         lines.append("")
         lines.append("Tools:")
+        lines.append(#"- batch: {"tool": "batch", "calls": [{"tool": "<first tool>", ...}, {"tool": "<second tool>", ...}]} runs up to \#(ToolBatch.maxCalls) tool calls in one step and returns all their results, each between start and end lines. Use it whenever you need several calls that do not depend on each other's results."#)
         if hasFolder {
             lines += [
                 "- list_files: {\"tool\": \"list_files\", \"path\": \"<folder, or . for the project root>\"} lists files and folders up to 4 levels deep.",
                 "- read_file: {\"tool\": \"read_file\", \"path\": \"<file>\"} reads a text file.",
-                "- read_files: {\"tool\": \"read_files\", \"paths\": \"<paths, one per line>\"} reads up to \(ReadFiles.maxFiles) files at once and returns them as one Markdown document, each under its path. Use it instead of several read_file calls.",
+                "- read_files: {\"tool\": \"read_files\", \"paths\": \"<paths, folders, or patterns such as Shared/**/*.swift, one per line>\"} reads up to \(ReadFiles.maxFiles) files at once and returns them as one Markdown document; each file sits between a \"===== start of <path> =====\" line and an \"===== end of <path> =====\" line. A folder reads every text file under it. Use it instead of several read_file calls.",
                 "- find_files: {\"tool\": \"find_files\", \"name\": \"<part of a file name>\"} lists the files whose name contains the text, in any case. Use it to find a file instead of guessing its path.",
                 "- search_text: {\"tool\": \"search_text\", \"query\": \"<text>\", \"path\": \"<folder, optional>\", \"ignore_case\": true} finds lines containing the text, as path:line:text, up to 200 hits. path and ignore_case are optional.",
                 "- git_status: {\"tool\": \"git_status\"} lists changed files in the project's git repository.",
@@ -107,6 +118,13 @@ nonisolated struct ProjectTools: Sendable {
                 "- ask_user: {\"tool\": \"ask_user\", \"question\": \"<question>\"} asks the user something you need. Make it the last thing in your reply, then wait for their answer.",
             ]
         }
+        if memoryFile != nil {
+            lines += [
+                "- remember: {\"tool\": \"remember\", \"fact\": \"<one short fact about the user>\"} saves a fact for future chats. Use it when the user tells you something lasting about themselves (their name, preferences, projects, how they like answers), or asks you to remember something. Never save passwords, keys, or other secrets.",
+                "- forget: {\"tool\": \"forget\", \"fact\": \"<words from the fact>\"} removes a saved fact, when the user asks you to forget it or it is no longer true.",
+                "- list_memories: {\"tool\": \"list_memories\"} lists everything you remember about the user.",
+            ]
+        }
         #if os(macOS)
         if hasFolder {
             lines.append("- web_check: {\"tool\": \"web_check\", \"path\": \"<html file>\"} loads a local page at phone and desktop widths and reports layout and content problems.")
@@ -115,6 +133,7 @@ nonisolated struct ProjectTools: Sendable {
         for connector in Connectors.catalog where connectors.contains(connector.id) {
             lines.append(contentsOf: Connectors.toolHelp(for: connector))
         }
+        lines += extraToolHelp
         if hasFolder {
             let allowedList = commands.map { $0.joined(separator: " ") }.joined(separator: ", ")
             if allowCommands {
@@ -142,7 +161,7 @@ nonisolated struct ProjectTools: Sendable {
 
     /// The names of the tools on offer, read from the instructions so the two always agree.
     var toolNames: [String] {
-        let pattern = try? NSRegularExpression(pattern: #""tool": "([a-z_]+)""#)
+        let pattern = try? NSRegularExpression(pattern: #""tool": "([A-Za-z0-9_.-]+)""#)
         return instructions.components(separatedBy: "\n").filter { $0.hasPrefix("- ") }.compactMap { line in
             let range = NSRange(line.startIndex..., in: line)
             guard let match = pattern?.firstMatch(in: line, range: range),
@@ -204,6 +223,8 @@ nonisolated struct ProjectTools: Sendable {
                 return try editFile(path: try required(args, "path"),
                                     oldText: try required(args, "old_text"),
                                     newText: try required(args, "new_text"))
+            case "remember", "forget", "list_memories":
+                return try memory(name, args)
             default:
                 // The client names a block with no "tool" field "unknown".
                 if name == "unknown", args["tool"] == nil {
@@ -248,6 +269,31 @@ nonisolated struct ProjectTools: Sendable {
         return lines.isEmpty ? "(empty)" : lines.joined(separator: "\n")
     }
 
+    /// The memory tools. Each reads the file, changes it, and writes it back.
+    private func memory(_ name: String, _ args: [String: String]) throws -> String {
+        guard let file = memoryFile else {
+            throw ToolError("memory is turned off. The user can turn it on in Settings, Memory.")
+        }
+        let facts = MemoryStore.load(from: file)
+        switch name {
+        case "remember":
+            let fact = try required(args, "fact")
+            let after = try MemoryStore.remember(fact, in: facts, at: Date()).get()
+            guard after.count > facts.count else { return "already remembered: \(fact)" }
+            MemoryStore.save(after, to: file)
+            return "remembered: \(after.last?.text ?? fact)"
+        case "forget":
+            let words = try required(args, "fact")
+            let after = try MemoryStore.forget(words, in: facts).get()
+            MemoryStore.save(after, to: file)
+            let gone = facts.filter { fact in !after.contains(fact) }.map(\.text)
+            return "forgot: \(gone.joined(separator: "; "))"
+        default:
+            guard !facts.isEmpty else { return "You remember nothing about the user yet." }
+            return "You remember \(facts.count) facts:\n" + facts.map { "- \($0.text)" }.joined(separator: "\n")
+        }
+    }
+
     private func readFile(_ relative: String) throws -> String {
         let url = try resolve(relative)
         guard isRegularFile(url) else { throw ToolError(notAFile(relative, at: url)) }
@@ -259,19 +305,46 @@ nonisolated struct ProjectTools: Sendable {
         return String(text.prefix(Self.maxReadCharacters)) + "\n... truncated at \(Self.maxReadCharacters) characters"
     }
 
-    /// Reads several files and returns them as one Markdown document. A file that can't be read gets its reason
-    /// in place of its text, and the others are still read. The text of all files together is capped.
+    /// Reads several files and returns them as one Markdown document. An entry can be a path, a folder (every file
+    /// under it), or a pattern such as "Shared/**/*.swift". A file that can't be read gets its reason in place of its
+    /// text, and the others are still read; a file a folder or pattern found that is not text is skipped quietly.
+    /// The text of all files together is capped.
     private func readFiles(_ list: String) throws -> String {
-        let paths = ReadFiles.pathList(list)
-        guard !paths.isEmpty else { throw ToolError("give at least one path in paths") }
-        guard paths.count <= ReadFiles.maxFiles else {
-            throw ToolError("\(paths.count) files is too many. Read at most \(ReadFiles.maxFiles) at a time.")
+        let entries = ReadFiles.pathList(list)
+        guard !entries.isEmpty else { throw ToolError("give at least one path in paths") }
+
+        var paths: [String] = []          // in the order they will be read
+        var found = Set<String>()         // paths a folder or pattern found
+        var sections: [String] = []       // notes about entries that found nothing
+        var explicit = 0
+        for entry in entries {
+            if let pattern = try expansion(of: entry) {
+                guard ReadFiles.isValidPattern(pattern) else {
+                    sections.append(ReadFiles.section(path: entry, note: "error: \(entry) is not a valid pattern. Use * and ? inside one folder, ** across folders, and a closed [abc] for one of a set."))
+                    continue
+                }
+                let matches = try filesMatching(pattern)
+                if matches.isEmpty {
+                    sections.append(ReadFiles.section(path: entry, note: "no files match"))
+                }
+                for match in matches where !paths.contains(match) {
+                    paths.append(match)
+                    found.insert(match)
+                }
+            } else {
+                explicit += 1
+                paths.append(entry)
+            }
+        }
+        guard explicit <= ReadFiles.maxFiles else {
+            throw ToolError("\(explicit) files is too many. Read at most \(ReadFiles.maxFiles) at a time.")
         }
 
-        var sections: [String] = []
         var seen = Set<URL>()
         var distinct = 0
         var read = 0
+        var notText: [String] = []
+        var left = 0
         var remaining = ReadFiles.maxCharacters
         for path in paths {
             let url: URL
@@ -283,6 +356,14 @@ nonisolated struct ProjectTools: Sendable {
                 continue
             }
             guard seen.insert(url).inserted else { continue } // the same file under another spelling
+            if found.contains(path), !isText(url) {
+                notText.append(path)
+                continue
+            }
+            guard distinct < ReadFiles.maxFiles else {
+                left += 1
+                continue
+            }
             distinct += 1
             guard remaining > 0 else {
                 sections.append(ReadFiles.section(path: path, note: "skipped: the \(ReadFiles.maxCharacters)-character limit for one read_files call was reached. Read it on its own."))
@@ -306,7 +387,66 @@ nonisolated struct ProjectTools: Sendable {
                 sections.append(ReadFiles.section(path: path, note: "error: \(error.localizedDescription)"))
             }
         }
+        if left > 0 {
+            sections.append("\(left) more files matched and were not read, since one call reads at most \(ReadFiles.maxFiles). Read them in another call.")
+        }
+        if !notText.isEmpty {
+            let noun = notText.count == 1 ? "file that is" : "files that are"
+            sections.append("Skipped \(notText.count) \(noun) not text: \(notText.prefix(10).joined(separator: ", "))")
+        }
         return (["Read \(read) of \(distinct) files."] + sections).joined(separator: "\n\n")
+    }
+
+    /// The pattern an entry stands for: "folder/**" when it is a folder, itself when it is a pattern, or nil for a
+    /// plain path. A path that exists is never a pattern, even with [ or ? in its name (web/[id]/page.tsx).
+    /// A pattern may not leave the project.
+    private func expansion(of entry: String) throws -> String? {
+        var isDirectory: ObjCBool = false
+        if let url = try? resolve(entry), FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) {
+            guard isDirectory.boolValue else { return nil }
+            let relative = url == (try folder()) ? "" : String(url.path.dropFirst(try folder().path.count + 1))
+            return relative.isEmpty ? "**" : ReadFiles.escaped(relative) + "/**"
+        }
+        guard ReadFiles.isPattern(entry) else { return nil }
+        guard !entry.hasPrefix("/"), !entry.components(separatedBy: "/").contains("..") else {
+            throw ToolError("the pattern \(entry) leaves the project; patterns are relative to the project root")
+        }
+        return entry.hasPrefix("./") ? String(entry.dropFirst(2)) : entry
+    }
+
+    /// Project files whose path matches the pattern, sorted. Version control and build folders are skipped, and,
+    /// as in a shell, hidden files and folders (such as .env) are found only by a pattern that names one itself.
+    private func filesMatching(_ pattern: String) throws -> [String] {
+        guard let walker = FileManager.default.enumerator(atPath: try folder().path) else { return [] }
+        let findsHidden = pattern.hasPrefix(".") || pattern.contains("/.")
+        var found: [String] = []
+        var scanned = 0
+        while let path = walker.nextObject() as? String {
+            let name = (path as NSString).lastPathComponent
+            let isFolder = walker.fileAttributes?[.type] as? FileAttributeType == .typeDirectory
+            if Self.skippedFolders.contains(name) || (!findsHidden && name.hasPrefix(".")) {
+                if isFolder { walker.skipDescendants() }
+                continue
+            }
+            if isFolder { continue }
+            scanned += 1
+            if scanned > Self.maxScannedFiles { break }
+            if ReadFiles.matches(path, pattern: pattern) { found.append(path) }
+        }
+        return found.sorted()
+    }
+
+    /// Whether a file's first bytes decode as UTF-8 text with no NUL bytes.
+    private func isText(_ url: URL) -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
+        defer { try? handle.close() }
+        let head = (try? handle.read(upToCount: 4096)) ?? Data()
+        if head.contains(0) { return false }
+        // A cut in the middle of a multi-byte character is not a reason to call the file binary.
+        for drop in 0...3 where head.count >= drop {
+            if String(data: head.dropLast(drop), encoding: .utf8) != nil { return true }
+        }
+        return false
     }
 
     private func writeFile(path: String, content: String) throws -> String {
@@ -553,6 +693,13 @@ nonisolated struct ProjectTools: Sendable {
     }
 
     /// Turns a model-supplied relative path into a URL inside the project, or throws.
+    /// A path the model wrote, such as "./App/a.swift", as the project-relative path it names ("App/a.swift").
+    /// Nil when it leaves the project.
+    func relativePath(_ path: String) -> String? {
+        guard let root, let url = try? resolve(path) else { return nil }
+        return url == root ? nil : String(url.path.dropFirst(root.path.count + 1))
+    }
+
     func resolve(_ relative: String) throws -> URL {
         let root = try folder()
         guard !relative.hasPrefix("/") else { throw ToolError("path must be relative to the project: \(relative)") }

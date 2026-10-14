@@ -39,22 +39,28 @@ nonisolated enum ToolArguments {
         try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]
     }
 
-    /// The text from the first "{" to the brace that closes it, with control characters inside strings escaped
-    /// and commas just before a "}" or "]" dropped. Text that has no "{" comes back as it was.
+    /// The text from the first "{" to the brace that closes it, with control characters inside strings escaped,
+    /// backslashes that start no JSON escape (such as Swift's \( or a regex's \d) kept as backslashes, and commas
+    /// just before a "}" or "]" dropped. Text that has no "{" comes back as it was.
     static func repaired(_ text: String) -> String {
         guard let start = text.firstIndex(of: "{") else { return text }
+        let characters = Array(text[start...])
         var output = ""
         var depth = 0
         var inString = false
-        var escaped = false
-        for character in text[start...] {
+        var index = 0
+        while index < characters.count {
+            let character = characters[index]
+            index += 1
             if inString {
-                if escaped {
-                    escaped = false
-                    output.append(character)
-                } else if character == "\\" {
-                    escaped = true
-                    output.append(character)
+                if character == "\\" {
+                    if index < characters.count, isEscape(characters, at: index) {
+                        output.append(character)
+                        output.append(characters[index])
+                        index += 1
+                    } else {
+                        output += "\\\\"   // a lone backslash, written as an escaped one
+                    }
                 } else if character == "\"" {
                     inString = false
                     output.append(character)
@@ -82,6 +88,15 @@ nonisolated enum ToolArguments {
             }
         }
         return output
+    }
+
+    /// Whether the character after a backslash makes a JSON escape: one of \" \\ \/ \b \f \n \r \t, or \u
+    /// and four hex digits.
+    private static func isEscape(_ characters: [Character], at index: Int) -> Bool {
+        let next = characters[index]
+        if "\"\\/bfnrt".contains(next) { return true }
+        guard next == "u", index + 4 < characters.count else { return false }
+        return characters[(index + 1)...(index + 4)].allSatisfy(\.isHexDigit)
     }
 
     /// The JSON escape for a control character, or nil for any other character.

@@ -82,7 +82,7 @@ nonisolated enum GitHubFormat {
 }
 
 #if os(macOS)
-extension GitHubConnector {
+nonisolated extension GitHubConnector {
     /// The GitHub repo of a project, read from its git remotes.
     static func repo(in root: URL) -> String? {
         let names = ((try? HostProcess.run(["git", "remote"], in: root)) ?? "")

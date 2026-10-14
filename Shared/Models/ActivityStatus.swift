@@ -38,6 +38,7 @@ extension ToolActivity {
         case "ask_user": "questionmark.bubble"
         case "calendar_events": "calendar"
         case "find_files": "doc.text.magnifyingglass"
+        case "batch": "square.stack.3d.up"
         case "weather": "cloud.sun"
         case "wikipedia_search", "wikipedia_page": "book"
         case "define": "character.book.closed"
