@@ -1,5 +1,7 @@
 # Gatita
 
+[![Tests](https://github.com/LAOUUUUU/Gatita/actions/workflows/tests.yml/badge.svg?branch=dev)](https://github.com/LAOUUUUU/Gatita/actions/workflows/tests.yml)
+
 A SwiftUI chat app for Gatita's API, for Mac, iPhone, iPad, and Apple Vision Pro. The Mac is the full host, with project tools. iPhone, iPad, and Vision Pro are hosts that answer questions. Other platforms will be clients. See [ROADMAP.md](ROADMAP.md) and [docs/architecture.md](docs/architecture.md).
 
 ## What it does
@@ -145,6 +147,10 @@ TEST_RUNNER_GATITA_LIVE_TESTS=1 xcodebuild -project Gatita.xcodeproj -scheme Gat
 ```
 
 To see the offline screen without unplugging anything, launch the app with `GATITA_FORCE_OFFLINE=1`.
+
+The release script has its own tests: `python3 -m unittest discover -s scripts`.
+
+GitHub Actions runs all of this on a clean Mac for every push to `dev` and `main` that changes more than docs (`.github/workflows/tests.yml`): the release-script tests, the macOS tests, and the iOS simulator build, with Xcode 27.0 on GitHub's `xcode-27` runner. A failed run keeps its logs and test results for 7 days. Work happens on `dev`, which goes to `main` only once this passes.
 
 ## License
 

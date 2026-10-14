@@ -1,0 +1,71 @@
+# Runs the release-script tests, the macOS tests, and the iOS simulator build on a clean Mac, so `dev` only
+# goes to `main` once it builds and passes somewhere other than the developer's Mac.
+name: Tests
+
+on:
+  push:
+    branches: [dev, main]
+    paths-ignore: ["**.md", "docs/**", "research/**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# A newer push to the same branch replaces a run that is still going.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: macOS tests and iOS build
+    # GitHub's standard Apple silicon image for Xcode 27 (public preview). Free for public repositories;
+    # the larger xcode-27-xlarge runner is not.
+    runs-on: xcode-27
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Use Xcode 27.0
+        run: |
+          sudo xcode-select -s /Applications/Xcode_27.0.app
+          xcodebuild -version
+
+      - name: Release script tests
+        run: python3 -m unittest discover -s scripts
+
+      - name: Swift packages
+        run: xcodebuild -resolvePackageDependencies -project Gatita.xcodeproj -scheme Gatita -derivedDataPath "$RUNNER_TEMP/dd-test"
+
+      - name: macOS tests
+        run: |
+          if ! xcodebuild -project Gatita.xcodeproj -scheme Gatita -destination 'platform=macOS' \
+              -derivedDataPath "$RUNNER_TEMP/dd-test" -resultBundlePath "$RUNNER_TEMP/Tests.xcresult" \
+              CODE_SIGNING_ALLOWED=NO test > "$RUNNER_TEMP/test.log" 2>&1; then
+            grep -E "error:|' failed|\*\* TEST" "$RUNNER_TEMP/test.log" | grep -v "Domain=" | tail -80
+            exit 1
+          fi
+          grep -E "Executed [0-9]+ tests" "$RUNNER_TEMP/test.log" | tail -1
+
+      - name: iOS simulator build
+        run: |
+          if ! xcodebuild -project Gatita.xcodeproj -scheme Gatita -destination 'generic/platform=iOS Simulator' \
+              -derivedDataPath "$RUNNER_TEMP/dd-ios" CODE_SIGNING_ALLOWED=NO build > "$RUNNER_TEMP/ios.log" 2>&1; then
+            grep -E "error:|\*\* BUILD" "$RUNNER_TEMP/ios.log" | tail -60
+            exit 1
+          fi
+          grep -E "\*\* BUILD" "$RUNNER_TEMP/ios.log"
+
+      - name: Keep the logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-logs
+          path: |
+            ${{ runner.temp }}/test.log
+            ${{ runner.temp }}/ios.log
+            ${{ runner.temp }}/Tests.xcresult
+          retention-days: 7
+          if-no-files-found: ignore
