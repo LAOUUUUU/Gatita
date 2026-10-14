@@ -79,7 +79,7 @@ final class HostSession: NSObject {
     }
 
     /// Answers one prompt. `onPiece` gets each piece of the reply as Gatita writes it.
-    private func handlePrompt(_ text: String, from source: String, onPiece: (String) -> Void) async -> String {
+    func handlePrompt(_ text: String, from source: String, onPiece: (String) -> Void) async -> String {
         receivedPrompts.append("[\(source)] \(text)")
         guard let viewModel else {
             let message = "Error: this Mac is not ready yet."
@@ -144,23 +144,3 @@ extension HostSession: MCNearbyServiceAdvertiserDelegate {
         }
     }
 }
-
-#if os(iOS)
-extension HostSession: WCSessionDelegate {
-    nonisolated func session(_ session: WCSession, activationDidCompleteWith state: WCSessionActivationState, error: Error?) {}
-    nonisolated func sessionDidBecomeInactive(_ session: WCSession) {}
-    nonisolated func sessionDidDeactivate(_ session: WCSession) {
-        WCSession.default.activate()
-    }
-
-    nonisolated func session(_ session: WCSession,
-                             didReceiveMessage message: [String: Any],
-                             replyHandler: @escaping ([String: Any]) -> Void) {
-        guard let text = message["prompt"] as? String else { return }
-        Task { @MainActor in
-            let reply = await self.handlePrompt(text, from: "Watch") { _ in }
-            replyHandler(["response": reply])
-        }
-    }
-}
-#endif

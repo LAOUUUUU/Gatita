@@ -586,32 +586,14 @@ nonisolated struct ProjectTools: Sendable {
         }
     }
 
-#if os(macOS)
     /// Runs one read-only git command in the project folder. Only the fixed commands above reach here.
     private func git(_ arguments: [String]) throws -> String {
-        let root = try folder()
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        process.arguments = ["-C", root.path, "--no-pager"] + arguments
-        process.environment = ProcessInfo.processInfo.environment.merging(["GIT_TERMINAL_PROMPT": "0"]) { _, new in new }
-        let output = Pipe()
-        process.standardOutput = output
-        process.standardError = output
-        try process.run()
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-
-        let text = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard process.terminationStatus == 0 else {
-            throw ToolError(text.isEmpty ? "git exited with status \(process.terminationStatus)" : text)
-        }
-        return text.isEmpty ? "(no output)" : String(text.prefix(Self.maxReadCharacters))
-    }
-#else
-    private func git(_ arguments: [String]) throws -> String {
+        #if os(macOS)
+        try GitCommand.run(arguments, in: folder(), limit: Self.maxReadCharacters)
+        #else
         throw ToolError("git tools are only available on the Mac host")
+        #endif
     }
-#endif
 
     /// The change a write or edit would make, for the diff in the chat. Nothing is written. Nil for other tools,
     /// and for an edit that would fail.

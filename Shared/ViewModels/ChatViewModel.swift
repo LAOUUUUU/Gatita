@@ -238,18 +238,7 @@ final class ChatViewModel {
             Task { await mcp.connectAll(servers) }
         }
         #if os(macOS)
-        // The quick panel's shortcuts and "Ask Gatita" in the Services menu work from launch, even before (or
-        // without) a window.
-        QuickPanelController.shared.start(viewModel: self)
-        GatitaServices.register(viewModel: self)
-        // Background commands and local MCP servers stop when Gatita quits, so none keeps running on its own.
-        quitObserver = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification,
-                                                              object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated {
-                _ = self?.tasks.stopAll()
-                self?.mcp.stopAllNow()
-            }
-        }
+        quitObserver = MacLaunch.start(self)
         #endif
     }
 
