@@ -32,9 +32,9 @@ final class ClientSession: NSObject {
 
     override init() {
         #if canImport(UIKit)
-        let peerID = MCPeerID(displayName: UIDevice.current.name)
+        let peerID = MCPeerID(displayName: PeerName.safe(UIDevice.current.name, fallback: "Gatita Client"))
         #else
-        let peerID = MCPeerID(displayName: Host.current().name ?? "Gatita Client")
+        let peerID = MCPeerID(displayName: PeerName.safe(Host.current().name, fallback: "Gatita Client"))
         #endif
         self.peerID = peerID
         self.session = MCSession(peer: peerID, securityIdentity: nil, encryptionPreference: .required)

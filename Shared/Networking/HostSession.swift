@@ -39,9 +39,9 @@ final class HostSession: NSObject {
 
     override init() {
         #if os(macOS)
-        let peerID = MCPeerID(displayName: Host.current().name ?? "Gatita Host")
+        let peerID = MCPeerID(displayName: PeerName.safe(Host.current().name, fallback: "Gatita Host"))
         #else
-        let peerID = MCPeerID(displayName: UIDevice.current.name)
+        let peerID = MCPeerID(displayName: PeerName.safe(UIDevice.current.name, fallback: "Gatita Host"))
         #endif
         self.peerID = peerID
         self.mcSession = MCSession(peer: peerID, securityIdentity: nil, encryptionPreference: .required)

@@ -36,9 +36,9 @@ final class RemoteMacBrowser: NSObject {
         #if canImport(UIKit)
         let name = UIDevice.current.name
         #else
-        let name = Host.current().name ?? "Gatita"
+        let name = Host.current().name
         #endif
-        peerID = MCPeerID(displayName: name)
+        peerID = MCPeerID(displayName: PeerName.safe(name, fallback: "Gatita"))
         session = MCSession(peer: peerID, securityIdentity: nil, encryptionPreference: .required)
         browser = MCNearbyServiceBrowser(peer: peerID, serviceType: "gatita-host")
         super.init()
