@@ -8,6 +8,24 @@ Gatita uses three numbers, MAJOR.MINOR.PATCH, plus a channel while it is not fin
 
 No number resets. Each one keeps counting up, so after 0.0.2, a release with new models is 0.1.3, and a big refactor after that is 1.2.4.
 
+## 0.0.7 alpha
+
+A quick panel, richer replies, memory, math and diagrams, MCP servers, and more ways to reach Gatita.
+
+- **Quick panel (Mac).** Press ⌃⌘G, or ⌘ twice, to ask from any app. Pressing ⌘ twice also lets you drag over an area or click a window to attach a screenshot; Gatita's own windows are left out.
+- **Find.** The sidebar search looks through every message, and ⌘F finds words in the open chat and highlights them.
+- **Pinned chats and folders.** Pin a chat or move it to a folder from its menu in the sidebar.
+- **Memory.** Gatita can remember facts across chats. See, add, and delete them in Settings, Memory. It refuses anything that looks like a password or key, and a chat says when something was remembered.
+- **Replies.** Math is drawn as typeset math, and `mermaid` blocks as diagrams. Checklists, callouts, quotes, nested lists, and numbered steps; tables can be copied or shown as a chart. Code blocks have colors, and HTML and SVG blocks have a preview that can't reach the internet. Edit a question and send it again, or regenerate a reply with another model. Read a reply aloud, or ask with your voice.
+- **PDFs.** Drop a PDF to send its text, page by page.
+- **Code mode.** Gatita can ask before each command, with "Always allow" for a project. A reply's file changes can be undone. `batch` makes up to 10 tool calls in one step, `read_files` takes folders and patterns, and `web_fetch` takes up to 5 addresses.
+- **MCP servers.** Add local or remote MCP servers in Settings, MCP Servers, or import them from Claude Desktop. Each tool call asks first unless you trust the server.
+- **Shortcuts, Siri, and Services.** "Ask Gatita" works in Shortcuts and Siri, and in the Mac's Services menu for selected text.
+- **Scheduled prompts (Mac).** Run a prompt every hour, every day, on weekdays, or every week, and get a notification with the answer.
+- **Notifications.** Gatita tells you when a reply finishes, asks a question, or fails while you're in another app, and when a background command ends. They replace the finished-reply badge.
+- **Look.** Buttons, dialogs, menus, and tabs in Gatita's style. The Chat menu has shortcuts, Rename, Export as Markdown, and Delete all chats. Your own skills in Settings, My skills.
+- **Fixes.** Prices such as "$5" stay text next to math. Escape closes only the dialog or menu on top, and no longer stops a reply. Quitting stops running background commands. `web_fetch` keeps an address with commas whole. `read_files` reads paths with brackets, skips hidden files unless asked, and says when a pattern is broken. A Mac with no microphone says so instead of crashing.
+
 ## 0.0.6 alpha
 
 Connectors, skills, better tool calling, and a "No internet access" error.

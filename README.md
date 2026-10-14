@@ -99,7 +99,7 @@ A plugin is a folder with a `plugin.json` in `~/Library/Application Support/Gati
 
 ## Versions
 
-Gatita is an alpha, version 0.0.6. The version has three numbers, MAJOR.MINOR.PATCH:
+Gatita is an alpha, version 0.0.7. The version has three numbers, MAJOR.MINOR.PATCH:
 
 - **MAJOR** (first number): a big refactor or a huge update.
 - **MINOR** (second number): new models.
