@@ -8,6 +8,17 @@ Gatita uses three numbers, MAJOR.MINOR.PATCH, plus a channel while it is not fin
 
 No number resets. Each one keeps counting up, so after 0.0.2, a release with new models is 0.1.3, and a big refactor after that is 1.2.4.
 
+## 0.0.8 alpha
+
+Roblox help, formulas and diagrams that draw right, and a start-up fix for long device names.
+
+- **Roblox.** A Roblox skill (type `/roblox`). In Code mode, a Roblox chip shows in the bar above the prompt when the project folder is a Roblox project: a Rojo project, or script files named like `Main.server.luau`. Point at the chip to see how edits reach Roblox Studio.
+- **Code colors.** Lua and Luau blocks have colors of their own: `--` comments, `--[[ ]]` comments and `[[ ]]` strings, backtick strings, and the language's keywords. Before, `//` (Luau's floor division) was drawn as a comment.
+- **Math.** Formulas that failed right after a number, such as `x_{n=1}` and `-2\pi`, now draw, and formulas on the Mac are no longer half size. Gatita builds a patched copy of its math package until the fixes that are waiting upstream are released.
+- **Diagrams.** Mermaid diagrams are the right way up on the Mac, and their labels show on iPhone and iPad. An `svg` block draws as a picture with a Code button, and Gatita now tells the model it can draw with mermaid, svg, and math.
+- **Fixes.** A Mac or iPhone whose name is longer than 63 bytes (or empty) no longer causes errors when Gatita starts. The project bar no longer shows an old folder's git branch or Roblox chip if you pick another folder quickly.
+- **Under the hood.** Code that belongs to one system now lives in a folder for it (macOS, iOS, iPadOS, visionOS). The tests and the iOS build run on GitHub Actions for every push to `dev` and `main`. The release script shows a progress bar.
+
 ## 0.0.7 alpha
 
 A quick panel, richer replies, memory, math and diagrams, MCP servers, and more ways to reach Gatita.

@@ -224,9 +224,12 @@ Everything stays on the device. Nothing is sent to a service other than the Gati
 - [002](decisions/002-per-os-folders.md): one folder per operating system for OS-only code.
 - [003](decisions/003-hosted-shop-deferred.md): the hosted shop waits for a reviewed, signed catalog.
 - [004](decisions/004-tvos-and-watchos-transport.md): how tvOS and watchOS clients reach a host (open).
+- [005](decisions/005-remote-access-plan.md): internet access for paired devices through a relay (a plan only).
+- [006](decisions/006-roblox-support-plan.md): Roblox support. Built so far: Luau coloring, the Roblox skill, and the project bar chip.
 - [007](decisions/007-public-api-connectors.md): connectors for free public services, with no keys.
 - [008](decisions/008-quick-panel.md): the quick panel and its global shortcut.
 - [009](decisions/009-swift-packages.md): the first Swift packages, for math, diagrams, and MCP.
+- [010](decisions/010-game-engines-overview.md) to [018](decisions/018-web-builds-and-webgl-plan.md): plans for Unity, Unreal, Godot, GameMaker, Bevy, Defold, web engines, and WebGL, ordered web first and then easiest to hardest to support (plans only, nothing built).
 
 ## Tests
 
