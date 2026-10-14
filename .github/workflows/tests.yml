@@ -44,7 +44,17 @@ jobs:
           if ! xcodebuild -project Gatita.xcodeproj -scheme Gatita -destination 'platform=macOS' \
               -derivedDataPath "$RUNNER_TEMP/dd-test" -resultBundlePath "$RUNNER_TEMP/Tests.xcresult" \
               CODE_SIGNING_ALLOWED=NO test > "$RUNNER_TEMP/test.log" 2>&1; then
-            grep -E "error:|' failed|\*\* TEST" "$RUNNER_TEMP/test.log" | grep -v "Domain=" | tail -80
+            grep -E "error:|' failed|FAULT:|uncaught exception|Restarting after|\*\* TEST" "$RUNNER_TEMP/test.log" \
+              | grep -v "Domain=" | tail -80
+            # Crashed tests show up only in the result bundle, so list every failure from there too.
+            xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/Tests.xcresult" > "$RUNNER_TEMP/summary.json" || true
+            python3 - "$RUNNER_TEMP/summary.json" <<'EOF' || true
+          import json, sys
+          summary = json.load(open(sys.argv[1]))
+          print(f"{summary.get('passedTests')} passed, {summary.get('failedTests')} failed, {summary.get('skippedTests')} skipped")
+          for failure in summary.get("testFailures", []):
+              print(f"FAILED {failure.get('testIdentifierString')}: {failure.get('failureText', '')[:300]}")
+          EOF
             exit 1
           fi
           grep -E "Executed [0-9]+ tests" "$RUNNER_TEMP/test.log" | tail -1
